@@ -26,6 +26,8 @@ concurrency:
 
 jobs:
   check:
+    # Legge gli alert di code scanning: repo pubblico o GitHub Advanced Security (repo variable CODE_SCANNING=true).
+    if: vars.CODE_SCANNING == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -13,6 +13,8 @@ permissions: read-all
 
 jobs:
   analysis:
+    # Scorecard pubblica i risultati: solo repo pubblico (repo variable PUBLIC_REPO=true).
+    if: vars.PUBLIC_REPO == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

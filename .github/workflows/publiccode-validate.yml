@@ -24,6 +24,8 @@ concurrency:
 
 jobs:
   publiccode_yml_validation:
+    # Il validatore scarica url e landingURL: solo repo pubblico (repo variable PUBLIC_REPO=true).
+    if: vars.PUBLIC_REPO == 'true'
     runs-on: ubuntu-latest
     name: publiccode.yml validation
     timeout-minutes: 5
