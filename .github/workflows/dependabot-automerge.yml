@@ -27,6 +27,10 @@ jobs:
   enable-automerge:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
+    # Su repo privato fetch-metadata legge i commit della PR: serve pull-requests: read.
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 5
     steps:
       # Traffico in uscita registrato (audit, non bloccato): host contattati nel log del

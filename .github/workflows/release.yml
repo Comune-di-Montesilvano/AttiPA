@@ -412,12 +412,23 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # Code scanning richiede un repo pubblico o GitHub Advanced Security (repo
+      # variable CODE_SCANNING=true); altrimenti il SARIF resta come artifact della run.
       - name: Upload Trivy scan results
-        if: always()
+        if: always() && vars.CODE_SCANNING == 'true'
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy-${{ matrix.app }}
+
+      - name: SARIF come artifact (senza code scanning)
+        if: always() && vars.CODE_SCANNING != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sarif-trivy-${{ matrix.app }}
+          path: trivy-results.sarif
+          retention-days: 14
+          if-no-files-found: ignore
 
   # Stack di produzione (docker-compose.yml) avviato con le 4 immagini appena firmate,
   # per digest: se lo smoke test fallisce nessun tag si sposta e `latest` resta quello

@@ -25,7 +25,8 @@ jobs:
   # Actions comprese (pnpm-audit e Trivy vedono solo produzione e immagini). Solo sulle PR:
   # in merge queue e su push il job risulta saltato, che per un required check vale verde.
   dependency-review:
-    if: github.event_name == 'pull_request'
+    # Su repo privato richiede GitHub Advanced Security (CODE_SCANNING=true).
+    if: github.event_name == 'pull_request' && vars.CODE_SCANNING == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -180,12 +181,23 @@ jobs:
           node "$GATE" --format trivy \
             --head "$RUNNER_TEMP/head.json" --base "$RUNNER_TEMP/base.json"
 
+      # Code scanning richiede un repo pubblico o GitHub Advanced Security (repo
+      # variable CODE_SCANNING=true); altrimenti il SARIF resta come artifact della run.
       - name: Upload SARIF
-        if: always()
+        if: always() && vars.CODE_SCANNING == 'true'
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
+
+      - name: SARIF come artifact (senza code scanning)
+        if: always() && vars.CODE_SCANNING != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sarif-trivy-fs
+          path: trivy-fs.sarif
+          retention-days: 14
+          if-no-files-found: ignore
 
   # Stesse immagini di release.yml, buildate dalla PR (nessun push) e scansionate prima del
   # merge: un bump Dependabot dell'immagine base o di una dipendenza con CVE non arriva su
@@ -301,9 +313,20 @@ jobs:
           GATE=.base/scripts/security/diff-gate.mjs; [ -f "$GATE" ] || GATE=scripts/security/diff-gate.mjs
           node "$GATE" --format trivy --head "$RUNNER_TEMP/head.json" "${base[@]}"
 
+      # Code scanning richiede un repo pubblico o GitHub Advanced Security (repo
+      # variable CODE_SCANNING=true); altrimenti il SARIF resta come artifact della run.
       - name: Upload SARIF
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && vars.CODE_SCANNING == 'true'
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image-${{ matrix.app }}
+
+      - name: SARIF come artifact (senza code scanning)
+        if: always() && github.event_name != 'pull_request' && vars.CODE_SCANNING != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sarif-trivy-image-${{ matrix.app }}
+          path: trivy-image.sarif
+          retention-days: 14
+          if-no-files-found: ignore

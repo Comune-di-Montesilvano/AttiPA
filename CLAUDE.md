@@ -123,3 +123,10 @@ cosign, attestazioni, smoke sullo stack completo, poi tag), `security-autofix.ym
 secret `BOT_CLIENT_ID`/`BOT_PRIVATE_KEY` della GitHub App), Dependabot.
 Immagini: `ghcr.io/comune-di-montesilvano/attipa-{backend,frontend-admin,tinn-gateway,docgen}`.
 Ruleset di `main` (merge queue, required check) da configurare sul repo come in ComunicaPA.
+
+**Repo privato senza GitHub Advanced Security** (scelta voluta: il codice mostra la struttura
+del DB Tinn, che è del fornitore). Due repo variable riaccendono le parti che lo richiedono:
+`CODE_SCANNING=true` (upload SARIF su code scanning, `dependency-review`, `security-alerts.yml`)
+e `PUBLIC_REPO=true` (Scorecard, validazione `publiccode.yml`, che scarica gli URL del repo).
+Senza variabili i SARIF di Trivy restano artifact della run (`sarif-*`); il blocco su
+vulnerabilità resta comunque nell'`exit-code` di Trivy.
