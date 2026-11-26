@@ -120,7 +120,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD/services:/w" -w /w python:3.15-slim 
 
 Workflow copiati da ComunicaPA e adattati (vedi `docs/ci-cd-security-baseline.md`, nota in
 testa): `tests.yml` (PR: lint/type-check; merge queue: build, test con copertura,
-`python-tests` per tinn-gateway e docgen), `security.yml`, `release.yml` (build, Trivy, firma
+`python-tests` per tinn-gateway e docgen; required check `python-tests-ok`), `security.yml`, `release.yml` (build, Trivy, firma
 cosign, attestazioni, smoke sullo stack completo, poi tag), `security-autofix.yml` (richiede i
 secret `BOT_CLIENT_ID`/`BOT_PRIVATE_KEY` della GitHub App), Dependabot.
 Immagini: `ghcr.io/comune-di-montesilvano/attipa-{backend,frontend-admin,tinn-gateway,docgen}`.
