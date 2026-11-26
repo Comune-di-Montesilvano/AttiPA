@@ -1,36 +1,19 @@
 """API interna (nessuna porta sull'host) sul DB Tinn in sola lettura."""
-import logging
 import os
 import threading
-import time
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app import db, sync
-
-log = logging.getLogger('tinn-gateway')
-
-
-def _scheduler(hour):
-    """Una sync al giorno all'ora indicata (il fornitore scrive lo zip verso le 05:00)."""
-    last = None
-    while True:
-        now = datetime.now()
-        if now.hour == hour and last != now.date():
-            last = now.date()
-            code = sync.main([])
-            log.info('sync giornaliera terminata con codice %s', code)
-        time.sleep(60)
+from app import db, scheduler
 
 
 @asynccontextmanager
 async def lifespan(_app):
     hour = os.environ.get('TINN_SYNC_HOUR', '').strip()
     if hour.isdigit():
-        threading.Thread(target=_scheduler, args=(int(hour),), daemon=True).start()
+        threading.Thread(target=scheduler.loop, args=(int(hour),), daemon=True).start()
     yield
 
 
