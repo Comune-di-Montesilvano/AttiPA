@@ -25,6 +25,12 @@ updates:
       default-days: 7
       semver-major-days: 14
     open-pull-requests-limit: 10
+    # TypeScript 7 (compilatore nativo) non espone ancora l'API usata da Nest CLI e
+    # typescript-eslint ("does not support TS 7.0"): attesa la 7.1. Togliere l'ignore
+    # quando entrambi la supportano.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         update-types:
