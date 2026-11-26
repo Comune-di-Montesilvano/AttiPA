@@ -20,7 +20,7 @@ services:
   # esce subito con successo.
   verify-images:
     <<: *hardening
-    image: ghcr.io/sigstore/cosign/cosign:v3.1.4-dev@sha256:8af1a2cf9fba903fdfc6bdafdc25f7b13ef34ad722095543ea787fb96f7240c1
+    image: ghcr.io/sigstore/cosign/cosign:v3.1.6-dev@sha256:92c6e36fa840ec72f6c54a2c064a9de5c64fd6f489ce7eaa04641c8ee84cca58
     restart: "no"
     read_only: true
     tmpfs:
