@@ -18,16 +18,16 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared-types
       '@nestjs/common':
-        specifier: ^12.5.1
+        specifier: ^12.6.1
         version: 12.6.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config':
         specifier: ^12.1.1
         version: 12.1.1(@nestjs/common@12.6.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core':
-        specifier: ^12.5.1
+        specifier: ^12.6.1
         version: 12.6.1(@nestjs/common@12.6.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@12.6.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/platform-express':
-        specifier: ^12.5.1
+        specifier: ^12.6.1
         version: 12.6.1(@nestjs/common@12.6.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.6.1)(rxjs@7.8.2)
       class-transformer:
         specifier: ^0.5.1
@@ -36,39 +36,39 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       reflect-metadata:
-        specifier: ^0.2.0
+        specifier: ^0.2.2
         version: 0.2.2
       rxjs:
-        specifier: ^7.8.1
+        specifier: ^7.8.2
         version: 7.8.2
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.15.0)
       '@nestjs/cli':
-        specifier: ^12.0.13
+        specifier: ^12.0.15
         version: 12.0.15(@swc/core@1.16.22)(@types/node@26.6.10)
       '@nestjs/schematics':
-        specifier: ^12.0.13
+        specifier: ^12.0.16
         version: 12.0.16(chokidar@5.0.0)(typescript@6.0.3)
       '@nestjs/testing':
-        specifier: ^12.5.1
+        specifier: ^12.6.1
         version: 12.6.1(@nestjs/common@12.6.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.6.1)(@nestjs/platform-express@12.6.1)
       '@swc/core':
         specifier: ^1.16.22
         version: 1.16.22
       '@types/express':
-        specifier: ^5.0.0
+        specifier: ^5.0.6
         version: 5.0.6
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
       '@types/node':
-        specifier: ^26.6.6
+        specifier: ^26.6.10
         version: 26.6.10
       '@vitest/coverage-v8':
-        specifier: 5.1.0
-        version: 5.1.0(vitest@5.1.1)
+        specifier: 5.1.1
+        version: 5.1.1(vitest@5.1.1)
       eslint:
         specifier: ^10.15.0
         version: 10.15.0
@@ -76,14 +76,14 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
       typescript-eslint:
-        specifier: ^8.73.0
+        specifier: ^8.74.0
         version: 8.74.0(eslint@10.15.0)(typescript@6.0.3)
       unplugin-swc:
         specifier: ^2.0.0
         version: 2.0.0(@swc/core@1.16.22)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.6.10))
       vitest:
-        specifier: ^5.1.0
-        version: 5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.0)(vite@8.3.8(@types/node@26.6.10))
+        specifier: ^5.1.1
+        version: 5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.1)(vite@8.3.8(@types/node@26.6.10))
 
   apps/frontend-admin:
     dependencies:
@@ -101,7 +101,7 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.15.0)
       '@types/react':
-        specifier: ^19.3.0
+        specifier: ^19.3.2
         version: 19.3.2
       '@types/react-dom':
         specifier: ^19.3.0
@@ -110,8 +110,8 @@ importers:
         specifier: ^6.3.0
         version: 6.3.0(vite@8.3.8(@types/node@26.6.10))
       '@vitest/coverage-v8':
-        specifier: 5.1.0
-        version: 5.1.0(vitest@5.1.1)
+        specifier: 5.1.1
+        version: 5.1.1(vitest@5.1.1)
       eslint:
         specifier: ^10.15.0
         version: 10.15.0
@@ -128,14 +128,14 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
       typescript-eslint:
-        specifier: ^8.73.0
+        specifier: ^8.74.0
         version: 8.74.0(eslint@10.15.0)(typescript@6.0.3)
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.10)
       vitest:
-        specifier: ^5.1.0
-        version: 5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.0)(vite@8.3.8(@types/node@26.6.10))
+        specifier: ^5.1.1
+        version: 5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.1)(vite@8.3.8(@types/node@26.6.10))
 
   packages/shared-types:
     devDependencies:
@@ -1407,11 +1407,11 @@ packages:
       oxc-transform-react:
         optional: true
 
-  '@vitest/coverage-v8@5.1.0':
-    resolution: {integrity: sha512-OY9aShBQG5KOIw2zCo9fDoCHI9RHliNHJ//nM7m6jGg41Hyke9JOGWmeMlK74xYErsxMoK8mIB3gAeEyFVA7LA==}
+  '@vitest/coverage-v8@5.1.1':
+    resolution: {integrity: sha512-xL4NkbVx/UqqDHaXSOyvB8qsSoLQ+dVNGR9H2Bh/4ggQtmaPFNPUC9gZQwKZePLOQ6WDcgwXVnPulFW9eCHt0w==}
     peerDependencies:
-      '@vitest/browser': 5.1.0
-      vitest: 5.1.0
+      '@vitest/browser': 5.1.1
+      vitest: 5.1.1
     peerDependenciesMeta:
       '@vitest/browser':
         optional: true
@@ -4556,7 +4556,7 @@ snapshots:
       '@rolldown/pluginutils': 1.1.1
       vite: 8.3.8(@types/node@26.6.10)
 
-  '@vitest/coverage-v8@5.1.0(vitest@5.1.1)':
+  '@vitest/coverage-v8@5.1.1(vitest@5.1.1)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
       '@vitest/istanbul-lib-coverage': 2.1.1
@@ -4566,7 +4566,7 @@ snapshots:
       obug: 3.0.0
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.0)(vite@8.3.8(@types/node@26.6.10))
+      vitest: 5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.1)(vite@8.3.8(@types/node@26.6.10))
 
   '@vitest/istanbul-lib-coverage@2.1.1': {}
 
@@ -6429,7 +6429,7 @@ snapshots:
       '@types/node': 26.6.10
       fsevents: 2.3.3
 
-  vitest@5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.0)(vite@8.3.8(@types/node@26.6.10)):
+  vitest@5.1.1(@types/node@26.6.10)(@vitest/coverage-v8@5.1.1)(vite@8.3.8(@types/node@26.6.10)):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.1.1(vite@8.3.8(@types/node@26.6.10))
@@ -6447,7 +6447,7 @@ snapshots:
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 26.6.10
-      '@vitest/coverage-v8': 5.1.0(vitest@5.1.1)
+      '@vitest/coverage-v8': 5.1.1(vitest@5.1.1)
     transitivePeerDependencies:
       - msw
 
