@@ -1,0 +1,38 @@
+node_modules/
+dist/
+.env
+*.local
+.DS_Store
+Thumbs.db
+
+# Artefatti locali di tooling (sessioni Claude/Serena/Playwright, store pnpm da container)
+.playwright-mcp/
+.serena/
+.pnpm-store/
+*.tsbuildinfo
+
+# Superpowers scratch (progress ledger, not project docs)
+.superpowers/
+
+# Documentazione vendor di riferimento (non fa parte del codice app)
+/tinn/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Scansioni e tool dei workflow di sicurezza (security-autofix.yml)
+.cache/
+
+coverage/
+
+# Backup Tinn (zip/fbk) montati in sviluppo: dati reali
+backup/
+*.fbk
+*.fdb

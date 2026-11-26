@@ -1,0 +1,30 @@
+-- Storia di un capitolo/articolo di spesa: per ogni anno lo stanziamento assestato e gli
+-- impegni di competenza (creditore, oggetto, liquidato), per capire se il capitolo è in uso,
+-- per cosa e con quale ricorrenza (contratti cessati, canoni annuali, ecc.).
+-- Parametri: CAPITOLO, ARTICOLO, DAL (primo anno, es. 2022).
+-- Righe TIPO_RIGA: 'A' = assestato dell'anno, 'I' = impegno (riga ESERCIZIO = ANNO, non annullato).
+-- Liquidato = liquidazioni non annullate sulla riga d'impegno di quell'esercizio.
+SELECT * FROM (
+  SELECT B.ANNO, 'A' AS TIPO_RIGA, CAST(NULL AS VARCHAR(20)) AS IMPEGNO, CAST(NULL AS VARCHAR(60)) AS CREDITORE,
+         B.PREV_COMP_RES + COALESCE((SELECT SUM(V.IMPORTO) FROM GFVASTN1 V
+            WHERE V.ESERCIZIO = B.ESERCIZIO AND V.ANNO = B.ANNO AND V.TIPO = 'S'
+              AND V.CAPITOLO = B.CAPITOLO AND V.ARTICOLO = B.ARTICOLO), 0) AS IMPORTO,
+         CAST(NULL AS DOUBLE PRECISION) AS LIQUIDATO,
+         CAST(SUBSTRING(TRIM(B.DESCRIZIONE) FROM 1 FOR 70) AS VARCHAR(70)) AS OGGETTO
+  FROM GFBIPRN1 B
+  WHERE B.TIPO = 'S' AND B.ESERCIZIO = B.ANNO AND B.ANNO >= {DAL}
+    AND B.CAPITOLO = {CAPITOLO} AND B.ARTICOLO = {ARTICOLO}
+  UNION ALL
+  SELECT I.ANNO, 'I', I.ANNO_CREA || '/' || I.NUMERAZIONE || '/' || I.PROGRESSIVO,
+         CAST(SUBSTRING(TRIM(A.RAGIONE_SOC) FROM 1 FOR 60) AS VARCHAR(60)),
+         COALESCE(I.IMPORTO, 0) + COALESCE(I.V_VAR_P, 0) - COALESCE(I.V_VAR_N, 0),
+         (SELECT SUM(L.IMPORTO) FROM GFLIQUN1 L
+            WHERE L.IM_ESERCIZIO = I.ESERCIZIO AND L.IM_ANNO_CREA = I.ANNO_CREA AND L.IM_SIGLA = I.SIGLA
+              AND L.IM_NUMERAZIONE = I.NUMERAZIONE AND L.IM_PROGRESSIVO = I.PROGRESSIVO
+              AND L.ANNULLATO IS DISTINCT FROM 'A'),
+         CAST(SUBSTRING(TRIM(I.DESCRIZIONE) FROM 1 FOR 70) AS VARCHAR(70))
+  FROM GFIMDEN1 I LEFT JOIN GFANCON1 A ON A.CODICE = I.CREDITORE
+  WHERE I.ESERCIZIO = I.ANNO AND I.ANNO >= {DAL} AND I.ANNULLATO IS DISTINCT FROM 'A'
+    AND I.CAPITOLO = {CAPITOLO} AND I.ARTICOLO = {ARTICOLO}
+) X
+ORDER BY X.ANNO, X.TIPO_RIGA, X.IMPEGNO

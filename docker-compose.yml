@@ -1,0 +1,144 @@
+name: attipa
+
+# PRODUZIONE (podman rootless / Portainer): immagini da registry, solo volumi
+# named, nessun bind mount. Per lo sviluppo vedi docker-compose.override.yml
+# (attivato da COMPOSE_FILE in .env).
+#
+# Filesystem dei container in sola lettura: scrivono solo nei volumi e nei tmpfs
+# dichiarati. Nessuna escalation di privilegi e nessuna capability Linux.
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+
+  # Verifica delle firme cosign delle 4 immagini di ${IMAGE_TAG} prima di avviarle
+  # (VERIFY_IMAGES=true): firmate da release.yml di questo repo su un tag v* o su main.
+  # Se fallisce, gli altri servizi restano creati ma non avviati. Spenta (default),
+  # esce subito con successo.
+  verify-images:
+    <<: *hardening
+    image: ghcr.io/sigstore/cosign/cosign:v3.1.4-dev@sha256:8af1a2cf9fba903fdfc6bdafdc25f7b13ef34ad722095543ea787fb96f7240c1
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /home/nonroot:mode=1777
+    environment:
+      VERIFY_IMAGES: ${VERIFY_IMAGES:-false}
+      IMAGE_TAG: ${IMAGE_TAG:-latest}
+    entrypoint: ["/busybox/sh", "-ec"]
+    command:
+      - |
+        if [ "$$VERIFY_IMAGES" != "true" ]; then
+          echo "Verifica firme disattivata (VERIFY_IMAGES=$$VERIFY_IMAGES)"
+          exit 0
+        fi
+        R=ghcr.io/comune-di-montesilvano/attipa
+        cosign verify \
+          --certificate-identity-regexp '^https://github\.com/Comune-di-Montesilvano/AttiPA/\.github/workflows/release\.yml@refs/(tags/v.*|heads/main)$$' \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          "$$R-backend:$$IMAGE_TAG" "$$R-frontend-admin:$$IMAGE_TAG" \
+          "$$R-tinn-gateway:$$IMAGE_TAG" "$$R-docgen:$$IMAGE_TAG" >/dev/null
+        echo "Firme verificate: $$IMAGE_TAG"
+
+  backend:
+    <<: *hardening
+    image: ghcr.io/comune-di-montesilvano/attipa-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    # Nessuna porta sull'host: il frontend raggiunge backend:8080 sulla rete interna.
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TINN_GATEWAY_URL: http://tinn-gateway:8000
+      DOCGEN_URL: http://docgen:8000
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    tmpfs:
+      - /tmp
+    depends_on:
+      verify-images:
+        condition: service_completed_successfully
+    networks:
+      - attipa-net
+
+  # DB Tinn (Firebird 5 embedded) ripristinato ogni giorno dal backup SFTP del fornitore
+  # e interrogato in sola lettura con le query di services/tinn-gateway/queries.
+  tinn-gateway:
+    <<: *hardening
+    image: ghcr.io/comune-di-montesilvano/attipa-tinn-gateway:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      TINN_SFTP_HOST: ${TINN_SFTP_HOST:-}
+      TINN_SFTP_PORT: ${TINN_SFTP_PORT:-22}
+      TINN_SFTP_USER: ${TINN_SFTP_USER:-}
+      TINN_SFTP_PASSWORD: ${TINN_SFTP_PASSWORD:-}
+      TINN_SFTP_PATH: ${TINN_SFTP_PATH:-}
+      TINN_DB_FILE: ${TINN_DB_FILE:-}
+      TINN_SFTP_HOST_KEY: ${TINN_SFTP_HOST_KEY:-}
+      # Ora della sync giornaliera (vuota = nessuna sync automatica).
+      TINN_SYNC_HOUR: ${TINN_SYNC_HOUR:-6}
+    volumes:
+      # DB ripristinato, state.json, known_hosts del server SFTP.
+      - tinn_data:/data
+    depends_on:
+      verify-images:
+        condition: service_completed_successfully
+    networks:
+      - attipa-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  docgen:
+    <<: *hardening
+    image: ghcr.io/comune-di-montesilvano/attipa-docgen:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      # Profilo LibreOffice e file di lavoro delle conversioni.
+      - /tmp:size=512m
+    depends_on:
+      verify-images:
+        condition: service_completed_successfully
+    networks:
+      - attipa-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend-admin:
+    <<: *hardening
+    image: ghcr.io/comune-di-montesilvano/attipa-frontend-admin:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    # pid e file temporanei di nginx, config.js generato all'avvio.
+    tmpfs:
+      - /tmp
+    ports:
+      - "${ADMIN_PORT:-3000}:8080"
+    depends_on:
+      verify-images:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    networks:
+      - attipa-net
+
+volumes:
+  tinn_data:
+
+networks:
+  attipa-net:
+    driver: bridge

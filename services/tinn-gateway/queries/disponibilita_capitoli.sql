@@ -1,0 +1,25 @@
+-- Disponibilità dei capitoli di spesa in competenza per un anno.
+-- Parametri: ANNO (es. 2026), TITOLO (1, 2, ... o % = tutti), SETTORE (01..07 o % = tutti),
+--            MINIMO (disponibile minimo, 0 = tutti).
+-- assestato   = PREV_COMP_RES + variazioni GFVASTN1 (regola verificata)
+-- impegnato   = impegni non annullati di competenza (ESERCIZIO = ANNO), IMPORTO + V_VAR_P - V_VAR_N, tutte le SIGLA
+-- prenotato   = preimpegni dell'anno non ancora tradotti in impegno (PI_NUMERAZIONE nullo): regola DA VERIFICARE
+-- disponibile = assestato - impegnato (i preimpegni non sono sottratti)
+SELECT X.*, X.ASSESTATO - X.IMPEGNATO AS DISPONIBILE FROM (
+  SELECT B.CENTRO_RESP AS SETT, B.TITOLO AS TIT, B.AC_MISSIONE || '.' || B.AC_PROGRAMMA AS MIS_PRG,
+         B.AC_MACROAGG AS MAC, B.CAPITOLO || '/' || B.ARTICOLO AS CAP, B.DESCRIZIONE,
+         B.PREV_COMP_RES + COALESCE((SELECT SUM(V.IMPORTO) FROM GFVASTN1 V
+            WHERE V.ESERCIZIO = B.ESERCIZIO AND V.ANNO = B.ANNO AND V.TIPO = 'S'
+              AND V.CAPITOLO = B.CAPITOLO AND V.ARTICOLO = B.ARTICOLO), 0) AS ASSESTATO,
+         COALESCE((SELECT SUM(COALESCE(I.IMPORTO, 0) + COALESCE(I.V_VAR_P, 0) - COALESCE(I.V_VAR_N, 0)) FROM GFIMDEN1 I
+            WHERE I.ESERCIZIO = B.ESERCIZIO AND I.ANNO = B.ANNO AND I.CAPITOLO = B.CAPITOLO
+              AND I.ARTICOLO = B.ARTICOLO AND I.ANNULLATO IS DISTINCT FROM 'A'), 0) AS IMPEGNATO,
+         COALESCE((SELECT SUM(P.IMPORTO) FROM GFPREIMPN1 P
+            WHERE P.ESER_PRE_IMP = B.ESERCIZIO AND P.ANNO = B.ANNO AND P.TIPO = 'S'
+              AND P.CAPITOLO = B.CAPITOLO AND P.ARTICOLO = B.ARTICOLO AND P.PI_NUMERAZIONE IS NULL), 0) AS PRENOTATO
+  FROM GFBIPRN1 B
+  WHERE B.TIPO = 'S' AND B.ESERCIZIO = {ANNO} AND B.ANNO = {ANNO}
+    AND B.TITOLO LIKE '{TITOLO}' AND TRIM(B.CENTRO_RESP) LIKE '{SETTORE}'
+) X
+WHERE X.ASSESTATO - X.IMPEGNATO >= {MINIMO} AND X.ASSESTATO <> 0
+ORDER BY X.SETT, X.TIT, X.ASSESTATO - X.IMPEGNATO DESC

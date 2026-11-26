@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.env
+*.tsbuildinfo
+docs
+.serena
+.claude
+apps/backend/src/debug
+/tinn
+.playwright-mcp
+.pnpm-store

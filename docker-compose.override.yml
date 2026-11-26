@@ -1,0 +1,63 @@
+# SVILUPPO: attivato da COMPOSE_FILE=docker-compose.yml;docker-compose.override.yml
+# in .env. Bind mount per hot-reload, build da Dockerfile.dev.
+
+services:
+
+  backend:
+    image: attipa/backend:dev
+    # Dev: build e watch scrivono nel filesystem del container (prod: read_only).
+    read_only: false
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile.dev
+    # Solo dev: il browser chiama il backend diretto (public/config.js → localhost:8080).
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./apps/backend/src:/app/apps/backend/src:delegated
+      - ./packages/shared-types/src:/app/packages/shared-types/src:delegated
+      - backend_node_modules:/app/node_modules
+
+  tinn-gateway:
+    image: attipa/tinn-gateway:dev
+    read_only: false
+    build:
+      context: .
+      dockerfile: services/tinn-gateway/Dockerfile.dev
+    volumes:
+      - ./services/tinn-gateway/app:/svc/app:delegated
+      - ./services/tinn-gateway/queries:/svc/queries:delegated
+      # zip/fbk già scaricati a mano:
+      #   docker compose exec tinn-gateway python -m app.sync --local-zip /backup/<file>.zip
+      - ${TINN_BACKUP_DIR:-./backup}:/backup:ro
+
+  docgen:
+    image: attipa/docgen:dev
+    read_only: false
+    build:
+      context: .
+      dockerfile: services/docgen/Dockerfile.dev
+    volumes:
+      - ./services/docgen/app:/svc/app:delegated
+
+  frontend-admin:
+    image: attipa/frontend-admin:dev
+    read_only: false
+    build:
+      context: .
+      dockerfile: apps/frontend-admin/Dockerfile.dev
+    ports: !override
+      - "${ADMIN_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./apps/frontend-admin/src:/app/apps/frontend-admin/src:delegated
+      - ./apps/frontend-admin/public:/app/apps/frontend-admin/public:delegated
+      - ./packages/shared-types/src:/app/packages/shared-types/src:delegated
+      - admin_node_modules:/app/node_modules
+
+volumes:
+  backend_node_modules:
+  admin_node_modules:

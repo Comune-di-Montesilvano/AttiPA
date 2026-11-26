@@ -1,0 +1,69 @@
+name: Dependabot auto-merge
+# Minor/patch di dependabot: auto-merge (GitHub) appena i required check sono verdi; la PR
+# entra nella merge queue di main, che la rimette in pari con main e rilancia i check prima
+# del merge (nessun job "update-behind" da mantenere).
+# Major: nessuna azione, la PR resta aperta come promemoria per l'upgrade manuale.
+# Eccezione: tag immagine python (es. 3.14 -> 3.15) — dependabot lo classifica minor ma e'
+# un upgrade di runtime dei servizi Python (Firebird driver, wheel), resta manuale come le major.
+#
+# Token GitHub App (comune-montesilvano-bot, secret BOT_CLIENT_ID / BOT_PRIVATE_KEY) invece
+# di GITHUB_TOKEN: le azioni fatte con GITHUB_TOKEN non triggerano altri workflow. Sul
+# trigger pull_request di dependabot sono visibili solo i secret Dependabot: i due secret
+# vanno salvati sia come Actions che come Dependabot secret.
+# Permessi App (repo): Contents RW, Pull requests RW, Workflows RW (le PR github-actions
+# toccano .github/workflows/), Metadata R.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enable-automerge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Traffico in uscita registrato (audit, non bloccato): host contattati nel log del
+      # post-step e nella pagina insights StepSecurity della run.
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Token GitHub App
+        id: app
+        if: >-
+          steps.meta.outputs.update-type != 'version-update:semver-major' &&
+          !(steps.meta.outputs.package-ecosystem == 'docker' &&
+            contains(steps.meta.outputs.dependency-names, 'python'))
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
+      - name: Abilita auto-merge
+        if: steps.app.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        # Con la merge queue il metodo (squash) lo decide il ruleset di main.
+        run: gh pr merge --auto "$PR_URL"
+
+      - name: Major/runtime lasciata manuale
+        if: steps.app.outcome == 'skipped'
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          echo "::notice::Nessun auto-merge (${UPDATE_TYPE}, ${DEPS}) - PR lasciata aperta per revisione manuale."

@@ -1,0 +1,41 @@
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
+RUN apk add --no-cache tzdata
+ENV TZ=Europe/Rome
+WORKDIR /app
+# corepack dal tarball del registry npm, verificato con sha256 (niente `npm install` senza
+# hash). Stessa posizione di `npm install -g`. toolchain-version-check.yml segnala le nuove versioni.
+ADD --checksum=sha256:9128cfe26aee0c99f4fc68c15c6b8b12309a68be0de2c012cdfea2a463cb722f \
+    https://registry.npmjs.org/corepack/-/corepack-0.36.0.tgz /tmp/corepack.tgz
+RUN mkdir -p /usr/local/lib/node_modules/corepack \
+    && tar -xzf /tmp/corepack.tgz --strip-components=1 -C /usr/local/lib/node_modules/corepack \
+    && rm /tmp/corepack.tgz \
+    && ln -sf ../lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack \
+    && corepack enable
+
+# Cache layer: solo i manifesti (prima di COPY . . per sfruttare cache Docker)
+COPY package.json pnpm-workspace.yaml .npmrc pnpm.yaml ./
+# Versione di pnpm (con hash sha512, verificato da corepack) dal campo packageManager
+# di package.json: unica fonte, letta anche da pnpm/action-setup nei workflow.
+RUN corepack install
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY apps/backend/package.json ./apps/backend/
+
+# Install senza script (evita ERR_PNPM_IGNORED_BUILDS di pnpm v10+)
+RUN pnpm install --ignore-scripts
+
+COPY . .
+
+# shared-types va compilato esplicitamente ("main"/"types" puntano a ./dist,
+# mai a ./src — vedi commento in apps/backend/Dockerfile per il motivo: Node
+# blocca il type-stripping nativo per file sotto node_modules, e in produzione
+# il pacchetto finisce realmente lì). In dev il bind mount di packages/shared-types/src
+# sovrascrive solo i sorgenti, non dist/: dopo una modifica a shared-types
+# serve un rebuild del container (stesso pattern già documentato per modifiche
+# fuori da src/ o a package.json).
+RUN node_modules/.bin/tsc -p packages/shared-types/tsconfig.cjs.json && node_modules/.bin/tsc -p packages/shared-types/tsconfig.esm.json
+RUN echo '{"type":"module"}' > packages/shared-types/dist/esm/package.json
+
+EXPOSE 8080
+# Usa il binario direttamente — bypassa il deps-check di pnpm v11 al runtime
+WORKDIR /app/apps/backend
+CMD ["node_modules/.bin/nest", "start", "--watch"]

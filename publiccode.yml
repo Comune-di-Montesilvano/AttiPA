@@ -1,0 +1,75 @@
+publiccodeYmlVersion: "0"
+
+name: AttiPA
+url: "https://github.com/Comune-di-Montesilvano/AttiPA.git"
+landingURL: "https://github.com/Comune-di-Montesilvano/AttiPA"
+softwareVersion: "v0.0.1"
+releaseDate: "2026-11-26"
+
+platforms:
+  - web
+
+categories:
+  - document-management
+  - accounting
+  - procurement
+
+developmentStatus: development
+
+softwareType: "standalone/web"
+
+intendedAudience:
+  scope:
+    - government
+    - local-authorities
+  countries:
+    - IT
+
+description:
+  it:
+    localisedName: AttiPA
+    shortDescription: >-
+      Redazione assistita di atti amministrativi (determine, ordinanze,
+      variazioni di bilancio) su contabilità, regolamenti e normativa.
+    longDescription: >-
+      AttiPA aiuta gli uffici di un ente locale a redigere atti
+      amministrativi: determine di affidamento e di impegno, ordinanze,
+      decreti, richieste di variazione di bilancio, atti del personale.
+      Interroga in sola lettura la contabilità dell'ente (Tinn, Firebird)
+      per capitoli, disponibilità, impegni e storico dei fornitori, e si
+      appoggia ai regolamenti interni e alla normativa nazionale per
+      proporre testi e controlli.
+
+
+      Il modello linguistico è a scelta dell'ente: per default un modello
+      locale tramite endpoint compatibile OpenAI, così i dati contabili e
+      personali non escono dall'infrastruttura dell'ente. L'intero stack
+      gira in Docker, con immagini firmate e filesystem in sola lettura.
+    features:
+      - Sincronizzazione giornaliera del backup della contabilità Tinn
+      - Query in sola lettura su capitoli, disponibilità e impegni
+      - Conversione dei modelli di atto (RTF/DOCX/ODT → PDF)
+      - Modello linguistico configurabile, locale per default
+
+legal:
+  license: EUPL-1.2
+  mainCopyrightOwner: Comune di Montesilvano
+
+maintenance:
+  type: internal
+  contacts:
+    - name: Comune di Montesilvano — Innovazione Tecnologica
+      email: supporto@comune.montesilvano.pe.it
+      affiliation: Comune di Montesilvano
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - it
+
+IT:
+  countryExtensionVersion: "1.0"
+
+organisation:
+  uri: urn:x-italian-pa:c_f646
+  name: Comune di Montesilvano

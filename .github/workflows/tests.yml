@@ -1,0 +1,167 @@
+# .github/workflows/tests.yml
+name: Test Integrati
+
+# Niente push su main: il commit che arriva su main e' quello gia' testato nella merge
+# queue (il ruleset di main non ha bypass). Sulle PR solo i controlli veloci (lint e
+# type-check); build e test completi girano in merge queue, sul commit che verra' unito.
+on:
+  pull_request:
+    branches: [main]
+  # Merge queue di main: i check girano sulla PR gia' unita a main prima del merge.
+  merge_group:
+
+# Cancella run precedenti sullo stesso branch/PR quando arriva un nuovo push -
+# evita di sprecare minuti CI su commit gia' superati (push rapidi, force-push).
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # Traffico in uscita registrato (audit, non bloccato): host contattati nel log del
+      # post-step e nella pagina insights StepSecurity della run.
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Versione di pnpm dal campo packageManager di package.json (unica fonte, la stessa
+      # che corepack installa nei Dockerfile).
+      - name: Setup PNPM
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      # Major di Node dall'immagine base del backend (aggiornata da Dependabot): la CI
+      # testa sulla stessa versione che gira in produzione.
+      - name: Versione Node dall'immagine base
+        id: node
+        run: |
+          major=$(sed -nE 's/^FROM node:([0-9]+)-.*/\1/p' apps/backend/Dockerfile | head -n1)
+          [ -n "$major" ] || { echo "::error::FROM node:<major> non trovato in apps/backend/Dockerfile"; exit 1; }
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ steps.node.outputs.major }}
+          cache: 'pnpm'
+
+      # Script dei gate di sicurezza e dell'autofix (scripts/security, solo Node built-in).
+      - name: Test script di sicurezza
+        run: node --test scripts/security/test/
+
+      # pnpm v11 blocca i lifecycle script per default (ERR_PNPM_IGNORED_BUILDS)
+      # - stesso pattern gia' in uso nei Dockerfile (vedi CLAUDE.md). esbuild
+      # (dipendenza vite) va ricostruito esplicitamente dopo l'install.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Rebuild esbuild (necessario per vite, bloccato da --ignore-scripts)
+        run: pnpm rebuild esbuild
+
+      - name: Build shared-types
+        run: pnpm --filter @attipa/shared-types run build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check backend spec files
+        run: pnpm --filter backend exec tsc -p tsconfig.spec.json --noEmit
+
+      - name: Type-check frontend-admin test files
+        run: pnpm --filter frontend-admin exec tsc -p tsconfig.test.json --noEmit
+
+      # Solo in merge queue: sulla PR lo step risulta saltato e il check resta verde.
+      - name: Build (stesso comando usato nelle immagini Docker)
+        if: github.event_name != 'pull_request'
+        run: pnpm build
+
+      # `pnpm -r` salta i pacchetti senza lo script: ogni `test` deve avere il suo `test:coverage`.
+      - name: Ogni pacchetto con test ha test:coverage
+        if: github.event_name != 'pull_request'
+        run: |
+          node -e "
+          const fs = require('fs');
+          const dirs = ['apps', 'packages'].flatMap((d) => fs.readdirSync(d).map((n) => d + '/' + n));
+          const bad = dirs.filter((d) => fs.existsSync(d + '/package.json'))
+            .filter((d) => { const s = JSON.parse(fs.readFileSync(d + '/package.json')).scripts || {}; return s.test && !s['test:coverage']; });
+          bad.forEach((d) => console.log('::error file=' + d + '/package.json::manca test:coverage (il pacchetto sparirebbe dal run con copertura)'));
+          process.exit(bad.length ? 1 : 0);
+          "
+
+      # Stessa suite di `pnpm test` con --coverage (v8, report HTML): informativa, senza soglie.
+      - name: Run integrated tests (con copertura)
+        if: github.event_name != 'pull_request'
+        run: pnpm -r test:coverage
+
+      - name: Upload report di copertura
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ github.run_id }}
+          path: |
+            apps/backend/coverage/
+            apps/frontend-admin/coverage/
+            packages/shared-types/coverage/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # Suite pytest dei servizi Python nelle immagini dev (stessa base e stesse librerie di
+  # sistema della produzione: Firebird embedded, LibreOffice), dipendenze di test dal lock
+  # con hash. Solo in merge queue: sulla PR il job risulta saltato, che per un required
+  # check vale verde.
+  python-tests:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [tinn-gateway, docgen]
+    steps:
+      # Traffico in uscita registrato (audit, non bloccato): host contattati nel log del
+      # post-step e nella pagina insights StepSecurity della run.
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build immagine dev
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: docker build -q -f "services/$SERVICE/Dockerfile.dev" -t "$SERVICE:test" .
+
+      - name: pytest
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          docker run --rm -v "$PWD/services/$SERVICE:/src:ro" "$SERVICE:test" sh -ec '
+            pip install -q --no-cache-dir --require-hashes --no-deps -r /src/requirements-dev.txt
+            cp -r /src/tests ./tests
+            python -m pytest tests/ -q
+          '
+
+      # Script pip dell'autofix di sicurezza (packaging arriva dal lock di requirements-autofix).
+      - name: Test pip_fix (security-autofix)
+        if: matrix.service == 'docgen'
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" "$SERVICE:test" sh -ec '
+            pip install -q --no-cache-dir --require-hashes --no-deps -r /repo/scripts/security/requirements-autofix.txt
+            python -m unittest discover -s /repo/scripts/security/test -p "test_*.py"
+          '

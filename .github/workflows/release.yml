@@ -1,0 +1,531 @@
+# .github/workflows/release.yml
+name: Build & Push immagini
+
+on:
+  push:
+    tags: ['v*']
+  # Controllo giornaliero di main (04:30 UTC, dopo il giro dependabot delle 01:00): ricostruisce
+  # SOLO `latest` (+ `latest-YYYYMMDD`) e solo su causa reale (scripts/rebuild-check.sh):
+  # commit su main dopo la revision di latest, patch di sistema disponibili, CVE HIGH/CRITICAL
+  # con fix. Nessuna causa → nessun rebuild, latest e il suo digest restano quelli. Non tocca
+  # i tag vX.Y.Z (quelli li crea solo il maintainer).
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+    inputs:
+      rebuild_latest:
+        description: "Rebuild forzato di latest da main, senza controllo delle cause"
+        type: boolean
+        default: true
+      dry_run:
+        description: "Solo il controllo cause dello schedule: stampa l'esito, nessun rebuild"
+        type: boolean
+        default: false
+
+# Mai cancel-in-progress: un push a ghcr interrotto a meta' puo' lasciare un manifest
+# incompleto — run concorrenti si accodano invece di accavallarsi.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# Permessi minimi a livello di workflow, quelli di scrittura solo nei job che li usano.
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Pull delle immagini latest attuali per il controllo cause.
+      packages: read
+    outputs:
+      auto: ${{ steps.mode.outputs.auto }}
+      # Dry run e dispatch senza rebuild saltano sempre; lo schedule salta se il controllo
+      # non trova cause.
+      skip: ${{ steps.mode.outputs.skip == 'true' && 'true' || steps.check.outputs.skip || 'false' }}
+      version: ${{ steps.mode.outputs.version }}
+      auto_tag: ${{ steps.mode.outputs.auto_tag }}
+      pkg_refresh: ${{ steps.mode.outputs.pkg_refresh }}
+      # JSON app → cause del rebuild (label attipa.rebuild.reason).
+      reasons: ${{ steps.check.outputs.reasons || steps.mode.outputs.reasons }}
+      # JSON array delle app ricostruite per la causa c (CVE con fix).
+      cause_c: ${{ steps.check.outputs.cause_c || '[]' }}
+      # 'true' se il codice e' cambiato: tag, rebuild manuale, o causa a (commit su main) nel
+      # controllo dello schedule. Solo patch OS / CVE → 'false' (per un futuro job di test end-to-end).
+      code_changed: ${{ steps.check.outputs.code_changed || steps.mode.outputs.code_changed || 'false' }}
+    steps:
+      # Traffico in uscita limitato agli host elencati (anche dentro i container di
+      # docker build). Gli endpoint dell'infrastruttura Actions sono consentiti dall'agent.
+      # Release fallita per "blocked" → host nel log del post-step harden-runner o nella
+      # pagina insights della run: aggiungerlo qui se legittimo.
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          # Dal controllo cause: registry, Trivy (binario da get.trivy.dev → GitHub releases,
+          # DB da mirror.gcr.io, check versione) e mirror Alpine/Debian usati da
+          # `apk update`/`apt-get update` dentro le immagini latest.
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            get.trivy.dev:443
+            release-assets.githubusercontent.com:443
+            objects.githubusercontent.com:443
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+            mirror.gcr.io:443
+            check.trivy.dev:443
+            dl-cdn.alpinelinux.org:443
+            deb.debian.org:80
+            deb.debian.org:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # Storia + tag completi: il rebuild automatico ricava l'ultimo tag vX.Y.Z e il
+          # controllo cause conta i commit su main dopo la revision di latest.
+          fetch-depth: 0
+
+      # Niente piu' salto "tag nelle ultime 24 ore": dopo un tag latest ha come revision
+      # proprio quel commit, quindi senza merge successivi la causa a non scatta; il salto
+      # a tempo ignorerebbe invece per un giorno le cause b e c.
+      - name: Resolve build mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REBUILD_LATEST: ${{ inputs.rebuild_latest }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          auto=false
+          skip=false
+          check=false
+          # Schedule/dry run: lo decide il controllo cause (code_changed di rebuild-check.sh).
+          code_changed=false
+          reason=
+          if [[ "$EVENT_NAME" == "push" && "$REF_TYPE" == "tag" ]]; then
+            version="$REF_NAME"
+            reason="tag $REF_NAME"
+            code_changed=true
+          elif [[ "$EVENT_NAME" == "schedule" || "$DRY_RUN" == "true" ]]; then
+            # Rebuild solo se il controllo cause ne trova una; il dry run si ferma li'.
+            auto=true
+            check=true
+            if [[ "$DRY_RUN" == "true" ]]; then skip=true; fi
+          elif [[ "$REBUILD_LATEST" == "true" ]]; then
+            auto=true
+            reason="rebuild manuale (workflow_dispatch)"
+            code_changed=true
+          else
+            echo "::notice::Dispatch senza rebuild_latest: niente da buildare."
+            skip=true
+          fi
+          if [[ "$auto" == "true" ]]; then
+            # APP_VERSION = ultimo tag rilasciato (versione mostrata in UI/`/version`);
+            # il tag immagine latest-YYYYMMDD distingue il rebuild.
+            version=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo dev)
+          fi
+          {
+            echo "auto=$auto"
+            echo "skip=$skip"
+            echo "check=$check"
+            echo "code_changed=$code_changed"
+            echo "reasons=$(jq -cn --arg r "$reason" \
+              '{backend: $r, "frontend-admin": $r, "tinn-gateway": $r, "docgen": $r}')"
+            echo "version=${version:-dev}"
+            echo "auto_tag=latest-$(date -u +%Y%m%d)"
+            # Data del giorno: invalida una volta al giorno il layer `apk/apt upgrade` dei
+            # Dockerfile, altrimenti la cache registry lo congela e le patch OS non entrano.
+            echo "pkg_refresh=$(date -u +%F)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        if: steps.mode.outputs.check == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Stessa versione fissa (e stessa cache del binario) della scansione bloccante in build-push.
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        if: steps.mode.outputs.check == 'true'
+        with:
+          version: v0.76.2
+          cache: true
+
+      # Cause a (commit su main), b (patch di sistema), c (CVE HIGH/CRITICAL con fix) per
+      # ognuna delle 4 immagini latest; esito nel summary della run. Un controllo che non
+      # riesce a verificare conta come causa: mai uno skip per un errore.
+      - name: Rebuild check
+        id: check
+        if: steps.mode.outputs.check == 'true'
+        env:
+          MAIN_REF: origin/main
+        run: bash scripts/rebuild-check.sh
+
+  build-push:
+    needs: setup
+    if: needs.setup.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: backend
+            dockerfile: apps/backend/Dockerfile
+          - app: frontend-admin
+            dockerfile: apps/frontend-admin/Dockerfile
+          - app: tinn-gateway
+            dockerfile: services/tinn-gateway/Dockerfile
+          - app: docgen
+            dockerfile: services/docgen/Dockerfile
+    env:
+      IMAGE: ghcr.io/comune-di-montesilvano/attipa-${{ matrix.app }}
+    permissions:
+      contents: read
+      packages: write
+      # SARIF Trivy nella tab Security.
+      security-events: write
+      # Firma keyless cosign e attestazioni: certificato Sigstore sull'identita' OIDC del workflow.
+      id-token: write
+      attestations: write
+      # Issue "vulnerabilita' non risolvibile con un rebuild" (rebuild per causa c bloccato da Trivy).
+      issues: write
+    steps:
+      # Traffico in uscita limitato agli host elencati (anche dentro i container di
+      # docker build). Gli endpoint dell'infrastruttura Actions sono consentiti dall'agent.
+      # Release fallita per "blocked" → host nel log del post-step harden-runner o nella
+      # pagina insights della run: aggiungerlo qui se legittimo.
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            release-assets.githubusercontent.com:443
+            objects.githubusercontent.com:443
+            *.githubapp.com:443
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+            registry-1.docker.io:443
+            auth.docker.io:443
+            production.cloudfront.docker.com:443
+            production.cloudflare.docker.com:443
+            docker-images-prod.s3.dualstack.us-east-1.amazonaws.com:443
+            mirror.gcr.io:443
+            registry.npmjs.org:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            dl-cdn.alpinelinux.org:443
+            deb.debian.org:80
+            deb.debian.org:443
+            get.trivy.dev:443
+            check.trivy.dev:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag da applicare SOLO dopo scansione e firma: tag git → vX.Y.Z + latest;
+      # rebuild automatico → latest-YYYYMMDD + latest.
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || needs.setup.outputs.auto == 'true' }}
+            type=raw,value=${{ needs.setup.outputs.auto_tag }},enable=${{ needs.setup.outputs.auto == 'true' }}
+          # Perche' questa immagine e' stata ricostruita (cause del controllo, tag o dispatch).
+          labels: |
+            attipa.rebuild.reason=${{ fromJSON(needs.setup.outputs.reasons)[matrix.app] }}
+
+      # Push solo per digest, senza nessun tag: un'immagine che non passa Trivy resta un
+      # digest orfano (rimosso da ghcr-cleanup.yml) e non e' mai raggiungibile da un tag.
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Ripesca sempre le immagini base (node/nginx/python) per prendere le patch.
+          pull: true
+          # Attestazioni nel registry accanto all'immagine: SBOM (pacchetti contenuti) e
+          # provenance SLSA completa (commit, workflow, parametri di build).
+          sbom: true
+          provenance: mode=max
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ needs.setup.outputs.version }}
+            PKG_REFRESH=${{ needs.setup.outputs.pkg_refresh }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+      # Tag vX.Y.Z: bloccante assoluto, CRITICAL/HIGH con fix fermano la pubblicazione.
+      # Rebuild di latest: gate di NON REGRESSIONE (step successivo) — si pubblica se l'immagine
+      # nuova non ha vulnerabilita' assenti dalla latest attuale. Bloccare in assoluto qui
+      # impedirebbe anche il rebuild che corregge altre CVE (una CVE senza fix nelle immagini
+      # base fermava tutto); le residue finiscono nella issue sotto e le corregge l'autofix.
+      - name: Trivy vulnerability scan
+        id: trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: ${{ github.ref_type == 'tag' && '1' || '0' }}
+          ignore-unfixed: true
+          # Senza, con format sarif l'action ignora `severity` ed exit-code scatta su tutto.
+          limit-severities-for-sarif: true
+          trivyignores: .trivyignore.yaml
+          # Versione fissa come l'Action: un rilascio Trivy compromesso non entra in
+          # automatico. trivy-version-check.yml apre una issue quando ne esce una nuova.
+          version: v0.76.2
+
+      # Stesso binario e stesso DB dello step SARIF per l'immagine nuova e la latest attuale.
+      - name: Trivy non regressione rispetto a latest (rebuild)
+        id: nonreg
+        if: github.ref_type != 'tag'
+        env:
+          TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          opts=(image --quiet --skip-db-update --scanners vuln --severity "CRITICAL,HIGH"
+            --ignore-unfixed --ignorefile .trivyignore.yaml --format json)
+          trivy "${opts[@]}" --output "$RUNNER_TEMP/head.json" "$IMAGE@$DIGEST"
+          if docker pull --quiet "$IMAGE:latest" >/dev/null 2>&1; then
+            trivy "${opts[@]}" --output "$RUNNER_TEMP/base.json" "$IMAGE:latest"
+            base=(--base "$RUNNER_TEMP/base.json")
+          else
+            base=(--base-empty)
+          fi
+          residual=$(jq '[.Results[]?.Vulnerabilities[]?] | length' "$RUNNER_TEMP/head.json")
+          echo "residual=$([ "$residual" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          node scripts/security/diff-gate.mjs --format trivy --head "$RUNNER_TEMP/head.json" "${base[@]}"
+
+      # Rebuild pubblicato (nessuna regressione) ma con CVE HIGH/CRITICAL con fix ancora
+      # presenti, oppure tag/rebuild fermato da Trivy: la issue tiene traccia finche'
+      # l'autofix (security-autofix.yml) o Dependabot non porta il fix.
+      - name: Issue vulnerabilita' non risolvibile con un rebuild
+        if: >-
+          always() && steps.build.outcome == 'success' && (
+            steps.trivy.outcome == 'failure' || steps.nonreg.outcome == 'failure' ||
+            steps.nonreg.outputs.residual == 'true')
+        # Solo residui (latest pubblicata comunque): un errore di gh non deve fermare la pubblicazione.
+        continue-on-error: ${{ steps.trivy.outcome != 'failure' && steps.nonreg.outcome != 'failure' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          APP: ${{ matrix.app }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Vulnerabilità non risolvibile con un rebuild ($APP)"
+          table=$(trivy image --quiet --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore.yaml --format table "$IMAGE@$DIGEST" 2>&1 || true)
+          if [[ "${{ steps.trivy.outcome }}" == "failure" || "${{ steps.nonreg.outcome }}" == "failure" ]]; then
+            esito="La pubblicazione è stata fermata: l'immagine ricostruita ha vulnerabilità HIGH/CRITICAL con fix che la versione pubblicata non aveva (regressione), oppure è un tag di versione. Resta pubblicata l'immagine precedente."
+          else
+            esito="La nuova \`latest\` è stata pubblicata (nessuna regressione), ma contiene ancora vulnerabilità HIGH/CRITICAL con fix: il fix non è ancora nelle immagini base o nei mirror dei pacchetti."
+          fi
+          body=$(printf '%s\n' \
+            "Rebuild per \`$APP\`. $esito" \
+            "" "Run: $RUN_URL" "" '```' "$table" '```' "" \
+            "Le corregge da solo \`security-autofix.yml\` (dipendenze, digest dell'immagine base) quando la versione corretta ha almeno 48 ore; vedi le issue \"Autofix sicurezza: …\". Il controllo giornaliero riprova da solo.")
+          existing=$(gh issue list -R "$REPO" --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" -R "$REPO" --body "$body"
+          else
+            gh issue create -R "$REPO" --title "$TITLE" --body "$body"
+          fi
+
+      # SBOM CycloneDX dell'immagine (stesso Trivy della scansione), firmato sotto.
+      - name: SBOM (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx
+          output: sbom.cdx.json
+          skip-setup-trivy: true
+          version: v0.76.2
+
+      # Attestazioni firmate (Sigstore) e registrate su GitHub, legate al digest:
+      # provenance SLSA (repo, commit, workflow e run che hanno prodotto l'immagine) e SBOM.
+      # Verifica: scripts/verify-images.sh. Le attestazioni BuildKit (sbom/provenance di
+      # build-push-action) restano nel registry ma non sono firmate.
+      - name: Attestazione provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+
+      - name: Attestazione SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.cdx.json
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      # Firma keyless del digest (non del tag, che e' mobile). Prima del deploy
+      # scripts/verify-images.sh <tag> (o VERIFY_IMAGES=true nel compose) verifica le firme.
+      - name: Firma immagine (cosign)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
+      # Digest firmato e tag previsti per i job smoke e publish: i tag arrivano solo
+      # dopo lo smoke sullo stack completo.
+      - name: Digest e tag per smoke e publish
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          mkdir -p handoff
+          printf '%s\n' "$DIGEST" > handoff/digest
+          printf '%s\n' "$TAGS" > handoff/tags
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.app }}
+          path: handoff/
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload Trivy scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-${{ matrix.app }}
+
+  # Stack di produzione (docker-compose.yml) avviato con le 4 immagini appena firmate,
+  # per digest: se lo smoke test fallisce nessun tag si sposta e `latest` resta quello
+  # precedente. Le immagini restano digest orfani (ghcr-cleanup.yml).
+  smoke:
+    needs: [setup, build-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+            registry-1.docker.io:443
+            auth.docker.io:443
+            production.cloudfront.docker.com:443
+            production.cloudflare.docker.com:443
+            docker-images-prod.s3.dualstack.us-east-1.amazonaws.com:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: handoff
+
+      # Tag locale `smoke` sui digest firmati: il compose li usa senza pull (pull_policy
+      # missing). VERIFY_IMAGES resta spento: il tag smoke non esiste sul registry.
+      - name: Avvio stack
+        run: |
+          set -euo pipefail
+          for app in backend frontend-admin tinn-gateway docgen; do
+            img=ghcr.io/comune-di-montesilvano/attipa-$app
+            digest=$(cat "handoff/release-$app/digest")
+            docker pull -q "$img@$digest"
+            docker tag "$img@$digest" "$img:smoke"
+          done
+          {
+            echo "IMAGE_TAG=smoke"
+          } > smoke.env
+          docker compose -f docker-compose.yml -p smoke --env-file smoke.env up -d
+
+      - name: Smoke test
+        env:
+          COMPOSE: docker compose -f docker-compose.yml -p smoke --env-file smoke.env
+        run: scripts/smoke-stack.sh
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.yml -p smoke --env-file smoke.env down -v || true
+
+  # Solo ora le immagini diventano raggiungibili per tag (indice copiato cosi' com'e',
+  # attestazioni SBOM/provenance comprese).
+  publish:
+    needs: [setup, smoke]
+    if: >-
+      !cancelled() && needs.setup.result == 'success' && needs.setup.outputs.skip != 'true' &&
+      needs.smoke.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [backend, frontend-admin, tinn-gateway, docgen]
+    env:
+      IMAGE: ghcr.io/comune-di-montesilvano/attipa-${{ matrix.app }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ matrix.app }}
+          path: handoff
+
+      # Niente setup-buildx: imagetools create lavora solo sul registry, basta il buildx del
+      # runner (setup-buildx scaricherebbe BuildKit da Docker Hub, fuori dall'allowlist).
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pubblica tag
+        run: |
+          set -euo pipefail
+          DIGEST=$(cat handoff/digest)
+          args=()
+          while IFS= read -r t; do
+            [ -n "$t" ] && args+=(-t "$t")
+          done < handoff/tags
+          [ "${#args[@]}" -gt 0 ] || { echo "::error::Nessun tag da pubblicare"; exit 1; }
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+          echo "::notice::$IMAGE@$DIGEST → $(tr '\n' ' ' < handoff/tags)"

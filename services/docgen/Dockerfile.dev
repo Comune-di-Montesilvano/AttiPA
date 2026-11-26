@@ -1,0 +1,11 @@
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
+WORKDIR /svc
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation2 tzdata \
+    && rm -rf /var/lib/apt/lists/*
+COPY services/docgen/requirements.txt .
+RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt
+COPY services/docgen/app/ ./app/
+ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TZ=Europe/Rome
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

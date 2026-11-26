@@ -1,0 +1,117 @@
+version: 2
+# Ogni ecosistema: minor+patch raggruppate in una sola PR, mergiata in automatico
+# (vedi dependabot-automerge.yml); le major restano PR singole, aperte come promemoria
+# per l'upgrade manuale.
+# Controllo giornaliero con cooldown di 7 giorni: una versione appena pubblicata, anche
+# compromessa (es. pacchetto npm dirottato e ritirato dopo qualche giorno), non entra in
+# automatico. Major a 14 giorni solo per npm/pip: docker, docker-compose e github-actions
+# non supportano semver-major-days (le loro major restano comunque manuali). Il cooldown
+# non si applica ai Dependabot security updates (attivi sul repo): le correzioni di
+# advisory arrivano subito. Se Dependabot non apre l'alert (succede: GHSA pubblicate e
+# nessun alert per giorni) le corregge security-autofix.yml, con versione pubblicata da
+# almeno 48h e provenienza verificata. Giro alle 01:00 cosi' l'auto-merge finisce prima del rebuild
+# giornaliero di latest (release.yml, 04:30 UTC).
+updates:
+  # pnpm workspace monorepo — root pnpm-lock.yaml copre apps/* + packages/*
+  # (Dependabot rileva il workspace pnpm da un solo entry alla root, non
+  # serve un entry per apps/backend, apps/frontend-admin, ecc.)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "01:00"
+      timezone: "Europe/Rome"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Servizi Python (FastAPI), un requirements.txt per servizio
+  - package-ecosystem: "pip"
+    directories:
+      - "/services/tinn-gateway"
+      - "/services/docgen"
+    schedule:
+      interval: "daily"
+      time: "01:00"
+      timezone: "Europe/Rome"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    open-pull-requests-limit: 10
+    groups:
+      pip-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Dockerfile + Dockerfile.dev per servizio — un entry con `directories` copre
+  # tutti i Dockerfile* delle cartelle elencate.
+  - package-ecosystem: "docker"
+    directories:
+      - "/apps/backend"
+      - "/apps/frontend-admin"
+      - "/services/tinn-gateway"
+      - "/services/docgen"
+    schedule:
+      interval: "daily"
+      time: "01:00"
+      timezone: "Europe/Rome"
+    cooldown:
+      default-days: 7
+    groups:
+      docker-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Immagini di terze parti nel compose di produzione (cosign): digest fissato,
+  # aggiornato qui.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "01:00"
+      timezone: "Europe/Rome"
+    cooldown:
+      default-days: 7
+    groups:
+      compose-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Workflow GitHub Actions (.github/workflows/*.yml)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "01:00"
+      timezone: "Europe/Rome"
+    cooldown:
+      default-days: 7
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
