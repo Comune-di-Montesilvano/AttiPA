@@ -31,11 +31,6 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
-  if (config.get('nodeEnv', { infer: true }) !== 'production') {
-    // Solo dev: il browser chiama il backend diretto. In produzione passa dal nginx del frontend.
-    app.enableCors({ origin: ['http://localhost:3000'] });
-  }
-
   await app.listen(config.get('port', { infer: true }));
 }
 
