@@ -118,8 +118,9 @@ jobs:
 
   # Suite pytest dei servizi Python nelle immagini dev (stessa base e stesse librerie di
   # sistema della produzione: Firebird embedded, LibreOffice), dipendenze di test dal lock
-  # con hash. Solo in merge queue: sulla PR il job risulta saltato, che per un required
-  # check vale verde.
+  # con hash. Solo in merge queue. Il required check è python-tests-ok (sotto): i job di una
+  # matrice saltata sulla PR si chiamano solo «python-tests», senza «(servizio)», e non
+  # soddisferebbero un required check per servizio.
   python-tests:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -165,3 +166,22 @@ jobs:
             pip install -q --no-cache-dir --require-hashes --no-deps -r /repo/scripts/security/requirements-autofix.txt
             python -m unittest discover -s /repo/scripts/security/test -p "test_*.py"
           '
+
+  # Required check unico per la matrice python-tests: verde se i test passano (merge queue)
+  # o sono saltati (PR), rosso se uno fallisce o viene annullato.
+  python-tests-ok:
+    if: always()
+    needs: python-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+
+      - name: Esito python-tests
+        env:
+          RESULT: ${{ needs.python-tests.result }}
+        run: |
+          echo "python-tests: $RESULT"
+          [ "$RESULT" = success ] || [ "$RESULT" = skipped ]

@@ -45,7 +45,9 @@ in produzione finché manca il login.
 - Ripreso da `tinn-contabilita` (`app/sftp.py`, `app/sync.py`, `app/config.py` copiati):
   download SFTP (prefetch 64, keepalive, chiave host fissata in `/data/known_hosts`), `gbak -c`
   in `/data/tmp`, `os.replace` solo a ripristino riuscito. Sync giornaliera all'ora
-  `TINN_SYNC_HOUR` (thread nel processo uvicorn); a mano:
+  `TINN_SYNC_HOUR` (default 6, `TZ=Europe/Rome`; `app/scheduler.py`, thread nel processo uvicorn,
+  **un solo worker**): se fallisce riprova ogni 30 min per 4 ore. Prima sync reale (2026-11-26):
+  ≈ 6 min di download + 2 min di `gbak`. A mano (non in contemporanea con quella automatica):
   `docker compose exec tinn-gateway python -m app.sync [--force] [--local-zip /backup/x.zip]`.
 - Librerie Firebird copiate dall'immagine ufficiale `firebirdsql/firebird:5.0.3` su
   `python:3.15-slim` (+ `libtommath1`, `libtomcrypt1`, `libicu76`). `firebird.log` è un link
@@ -118,7 +120,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD/services:/w" -w /w python:3.15-slim 
 
 Workflow copiati da ComunicaPA e adattati (vedi `docs/ci-cd-security-baseline.md`, nota in
 testa): `tests.yml` (PR: lint/type-check; merge queue: build, test con copertura,
-`python-tests` per tinn-gateway e docgen), `security.yml`, `release.yml` (build, Trivy, firma
+`python-tests` per tinn-gateway e docgen; required check `python-tests-ok`), `security.yml`, `release.yml` (build, Trivy, firma
 cosign, attestazioni, smoke sullo stack completo, poi tag), `security-autofix.yml` (richiede i
 secret `BOT_CLIENT_ID`/`BOT_PRIVATE_KEY` della GitHub App), Dependabot.
 Immagini: `ghcr.io/comune-di-montesilvano/attipa-{backend,frontend-admin,tinn-gateway,docgen}`.
