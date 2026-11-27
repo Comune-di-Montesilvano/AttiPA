@@ -1,4 +1,4 @@
-import type { AuthResponse, TinnInfo, VersionInfo } from '@attipa/shared-types';
+import type { AssistantChatResponse, AssistantMessage, AuthResponse, LlmStatus, TinnInfo, VersionInfo } from '@attipa/shared-types';
 import { clearSession, loadSession } from './session';
 
 export function apiBase(config: Window['__ATTIPA_CONFIG__']): string {
@@ -45,6 +45,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const getVersion = () => request<VersionInfo>('/version');
 export const getTinnInfo = () => request<TinnInfo>('/tinn/info');
+export const getLlmStatus = () => request<LlmStatus>('/llm/status');
+export const askAssistant = (messages: AssistantMessage[]) =>
+  request<AssistantChatResponse>('/assistant/chat', { method: 'POST', body: JSON.stringify({ messages }) });
 
 export async function login(username: string, password: string): Promise<AuthResponse> {
   try {

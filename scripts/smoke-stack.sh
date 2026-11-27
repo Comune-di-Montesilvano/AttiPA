@@ -66,6 +66,9 @@ process.stdout.write(body + "." + createHmac("sha256", process.env.JWT_SECRET).u
 curl -fsS "$ADMIN/api/tinn/info" -H "Authorization: Bearer $token" | grep -q '"backupDate":null' \
   || fail "backend → tinn-gateway con token (/api/tinn/info)"
 ok "token operatore e backend → tinn-gateway"
+# Nessun modello nello smoke: lo stato dell'IA risponde con l'errore di configurazione.
+curl -fsS "$ADMIN/api/llm/status" -H "Authorization: Bearer $token" | grep -q '"error":"LLM_MODEL non configurato"'   || fail "/api/llm/status"
+ok "stato IA senza modello configurato"
 
 # Firebird embedded come utente 10001 su /data (volume) e /tmp (tmpfs): crea un DB dialect 1,
 # backup e ripristino con gbak (lo stesso percorso della sync), query con il driver.

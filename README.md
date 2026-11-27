@@ -8,18 +8,19 @@ la normativa nazionale e i modelli di atto, e usa un modello linguistico a scelt
 (locale per default) per proporre testi e controlli: capitolo e disponibilità, incentivi,
 contributo ANAC, CIG/CUP, oggetto entro 255 caratteri.
 
-> Stato: in sviluppo. Login su Active Directory presente; mancano base documentale e
-> integrazione IA.
+> Stato: in sviluppo. Login su Active Directory e assistente che interroga la contabilità
+> Tinn presenti; mancano base documentale, server MCP e redazione degli atti.
 
 ## Componenti
 
 | Servizio | Tecnologia | Ruolo |
 |---|---|---|
 | `frontend-admin` | React + Vite, nginx | interfaccia operatori |
-| `backend` | NestJS | API, orchestrazione, (in arrivo) adattatore LLM e server MCP |
+| `backend` | NestJS | API, orchestrazione, assistente IA (provider compatibili OpenAI), (in arrivo) server MCP |
 | `tinn-gateway` | FastAPI + Firebird 5 embedded | sync giornaliera del backup Tinn, query in sola lettura |
 | `docgen` | FastAPI + LibreOffice | conversione documenti (RTF/DOCX/ODT → PDF) |
 | `postgres` | Postgres 18 + pgvector | operatori, impostazioni, (in arrivo) atti e regolamenti |
+| `ollama` | Ollama (facoltativo, profilo `llm-locale`) | modello locale: i dati non escono dal server |
 
 ## Avvio in sviluppo
 
@@ -34,6 +35,14 @@ Interfaccia su http://localhost:3000. Primo ripristino del DB Tinn:
 
 ```bash
 docker compose exec tinn-gateway python -m app.sync
+```
+
+Assistente con modello locale (lento senza GPU):
+
+```bash
+docker compose --profile llm-locale up -d ollama
+docker compose exec ollama ollama pull qwen3:4b   # poi LLM_MODEL=qwen3:4b nel .env
+docker compose up -d backend
 ```
 
 ## Produzione

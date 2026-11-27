@@ -7,6 +7,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { DatabaseModule } from './database/database.module.js';
 import { TinnModule } from './tinn/tinn.module.js';
+import { LlmModule } from './llm/llm.module.js';
+import { AssistantModule } from './assistant/assistant.module.js';
 import configuration from './config/configuration.js';
 
 @Module({
@@ -18,6 +20,8 @@ import configuration from './config/configuration.js';
     DatabaseModule,
     AuthModule,
     TinnModule,
+    LlmModule,
+    AssistantModule,
   ],
   controllers: [AppController],
   providers: [

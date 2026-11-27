@@ -102,6 +102,9 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-}
+      LLM_MAX_STEPS: ${LLM_MAX_STEPS:-}
     tmpfs:
       - /tmp
     depends_on:
@@ -164,6 +167,28 @@ services:
       timeout: 5s
       retries: 3
 
+  # Modello locale (facoltativo): `docker compose --profile llm-locale up -d`, poi
+  # `docker compose exec ollama ollama pull <modello>`. Solo rete interna, nessuna porta
+  # sull'host: i dati inviati al modello non escono dal server. Senza GPU usare modelli
+  # piccoli (es. qwen3:4b / qwen3:8b).
+  ollama:
+    <<: *hardening
+    image: ollama/ollama:0.40.18@sha256:1cabd20e1762a7a8444bf4a7110b346d923cd77ab6c97c984434140638c913ec
+    profiles: [llm-locale]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Modello caricato in memoria più a lungo tra due richieste (default 5 minuti).
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+    volumes:
+      # Modelli scaricati (diversi GB).
+      - ollama_data:/root/.ollama
+    networks:
+      - attipa-net
+
   frontend-admin:
     <<: *hardening
     image: ghcr.io/comune-di-montesilvano/attipa-frontend-admin:${IMAGE_TAG:-latest}
@@ -185,6 +210,7 @@ services:
 volumes:
   postgres_data:
   tinn_data:
+  ollama_data:
 
 networks:
   attipa-net:
