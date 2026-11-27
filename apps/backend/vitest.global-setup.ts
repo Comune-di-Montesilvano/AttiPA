@@ -1,0 +1,69 @@
+import 'reflect-metadata';
+import { randomBytes } from 'node:crypto';
+import { DataSource } from 'typeorm';
+import { ENTITIES, MIGRATIONS } from './src/database/schema.list.js';
+
+/**
+ * Crea un database vuoto `<prefix>_<random>` sullo stesso server di
+ * `adminUrl` (mai toccato: serve solo per CREATE/DROP DATABASE) e ne
+ * ritorna l'URL con la funzione che lo droppa. Per i test di integrazione
+ * che devono partire da zero senza pestarsi i piedi con maxForks.
+ */
+export async function createTempDatabase(
+  adminUrl: string,
+  prefix: string,
+): Promise<{ url: string; drop: () => Promise<void> }> {
+  const name = `${prefix}_${randomBytes(6).toString('hex')}`;
+  const admin = await new DataSource({ type: 'postgres', url: adminUrl }).initialize();
+  try {
+    await admin.query(`CREATE DATABASE ${name}`);
+  } catch (err) {
+    await admin.destroy();
+    throw err;
+  }
+  const url = new URL(adminUrl);
+  url.pathname = `/${name}`;
+  return {
+    url: url.toString(),
+    drop: async () => {
+      try {
+        await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      } finally {
+        await admin.destroy();
+      }
+    },
+  };
+}
+
+/**
+ * Esegue tutte le migration (stessa lista dell'app) sul DB indicato e
+ * ritorna quante ne ha applicate (0 se lo schema era gia' aggiornato).
+ */
+export async function migrateTestDatabase(url: string): Promise<number> {
+  const ds = await new DataSource({
+    type: 'postgres',
+    url,
+    entities: ENTITIES,
+    migrations: MIGRATIONS,
+    migrationsRun: false,
+    synchronize: false,
+  }).initialize();
+  try {
+    return (await ds.runMigrations()).length;
+  } finally {
+    await ds.destroy();
+  }
+}
+
+/**
+ * globalSetup Vitest: porta lo schema del DB di test a quello di produzione
+ * prima della suite (job CI integration-tests, Postgres vuoto).
+ * Solo con TEST_DB_MIGRATE=1: senza, i test non toccano lo schema del DB di
+ * DATABASE_URL (in dev è quello dell'app, già migrato all'avvio).
+ */
+export default async function setup(): Promise<void> {
+  const url = process.env.DATABASE_URL;
+  if (process.env.TEST_DB_MIGRATE !== '1' || !url) return;
+  const applied = await migrateTestDatabase(url);
+  console.log(`[global-setup] migration applicate: ${applied}`);
+}

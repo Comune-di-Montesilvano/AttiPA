@@ -8,8 +8,8 @@ la normativa nazionale e i modelli di atto, e usa un modello linguistico a scelt
 (locale per default) per proporre testi e controlli: capitolo e disponibilità, incentivi,
 contributo ANAC, CIG/CUP, oggetto entro 255 caratteri.
 
-> Stato: scheletro iniziale. Mancano ancora autenticazione, base documentale e integrazione IA:
-> non esporre in produzione.
+> Stato: in sviluppo. Login su Active Directory presente; mancano base documentale e
+> integrazione IA.
 
 ## Componenti
 
@@ -19,11 +19,13 @@ contributo ANAC, CIG/CUP, oggetto entro 255 caratteri.
 | `backend` | NestJS | API, orchestrazione, (in arrivo) adattatore LLM e server MCP |
 | `tinn-gateway` | FastAPI + Firebird 5 embedded | sync giornaliera del backup Tinn, query in sola lettura |
 | `docgen` | FastAPI + LibreOffice | conversione documenti (RTF/DOCX/ODT → PDF) |
+| `postgres` | Postgres 18 + pgvector | operatori, impostazioni, (in arrivo) atti e regolamenti |
 
 ## Avvio in sviluppo
 
 ```bash
-cp .env.example .env      # decommentare COMPOSE_FILE, inserire le credenziali SFTP Tinn
+cp .env.example .env      # decommentare COMPOSE_FILE; POSTGRES_PASSWORD, JWT_SECRET,
+                          # LDAP_HOST=mock (admin/admin) e credenziali SFTP Tinn
 docker compose build
 docker compose up -d
 ```
@@ -39,7 +41,8 @@ docker compose exec tinn-gateway python -m app.sync
 `docker-compose.yml` con le immagini firmate di `ghcr.io/comune-di-montesilvano/attipa-*`
 (stack Portainer da git, podman rootless), opzionalmente dietro Traefik con
 `docker-compose.traefik.yml`. Verifica delle firme: `VERIFY_IMAGES=true` o
-`scripts/verify-images.sh <tag>`.
+`scripts/verify-images.sh <tag>`. Obbligatori nel `.env`: `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`JWT_SECRET` (`openssl rand -hex 32`) e la configurazione `LDAP_*` di Active Directory.
 
 ## Licenza
 

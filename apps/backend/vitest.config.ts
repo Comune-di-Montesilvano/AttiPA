@@ -12,6 +12,8 @@ export default defineConfig({
     include: ['**/*.spec.ts'],
     environment: 'node',
     setupFiles: ['../vitest.setup.ts'],
+    // Migra il DB di test prima della suite, solo con TEST_DB_MIGRATE=1 (job CI integration-tests).
+    globalSetup: ['../vitest.global-setup.ts'],
     pool: 'forks',
     maxForks: 2,
     testTimeout: 15000,
