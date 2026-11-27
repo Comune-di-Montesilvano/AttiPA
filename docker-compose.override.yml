@@ -3,6 +3,11 @@
 
 services:
 
+  # Solo dev: Postgres raggiungibile dall'host (test di integrazione, client SQL), solo su localhost.
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
   backend:
     image: attipa/backend:dev
     # Dev: build e watch scrivono nel filesystem del container (prod: read_only).

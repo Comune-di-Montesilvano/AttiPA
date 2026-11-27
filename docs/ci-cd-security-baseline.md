@@ -84,7 +84,7 @@ Non disponibili su AttiPA: secret scanning `non_provider_patterns` e `validity_c
 |---|---|---|
 | `deletion`, `non_fast_forward` | — | main non si cancella né si riscrive |
 | `pull_request` | approvazioni richieste 0 (unico maintainer), thread risolti obbligatori, solo squash | nessun push diretto |
-| `required_status_checks` | `run-tests`, `python-tests-ok` (esito della matrice `python-tests`), `dependency-review`, `pnpm-audit`, `trivy-fs`, `trivy-image (<app>)` ×4; non strict | la coda rimette già la PR in pari |
+| `required_status_checks` | `run-tests`, `integration-tests`, `python-tests-ok` (esito della matrice `python-tests`), `dependency-review`, `pnpm-audit`, `trivy-fs`, `trivy-image (<app>)` ×4; non strict | la coda rimette già la PR in pari |
 | `merge_queue` | squash, ALLGREEN, build/merge fino a 5, timeout check 60 min | ogni commit su main è testato così com'è |
 | `code_scanning` | CodeQL: alert `errors`, sicurezza `high_or_higher` | una PR non introduce alert nuovi |
 | bypass | **nessuno** (admin compresi) | il cancello vale per tutti |

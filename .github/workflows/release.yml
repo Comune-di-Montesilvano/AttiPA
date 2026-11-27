@@ -476,6 +476,10 @@ jobs:
           done
           {
             echo "IMAGE_TAG=smoke"
+            echo "POSTGRES_USER=attipa"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "POSTGRES_DB=attipa"
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
           } > smoke.env
           docker compose -f docker-compose.yml -p smoke --env-file smoke.env up -d
 

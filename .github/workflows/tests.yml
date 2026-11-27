@@ -116,6 +116,117 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # Immagine postgres (con digest) letta da docker-compose.yml, unica fonte: un bump
+  # Dependabot del compose arriva anche al service di integration-tests.
+  images:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      postgres: ${{ steps.images.outputs.postgres }}
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Una sola riga image: per pgvector, sempre fissata per digest: altrimenti errore.
+      - name: Immagini da docker-compose.yml
+        id: images
+        run: |
+          refs=$(sed -nE "s/^[[:space:]]*image:[[:space:]]*[\"']?(pgvector\/pgvector:[^\"'[:space:]]+)[\"']?[[:space:]]*$/\1/p" docker-compose.yml | sort -u)
+          if [ "$(printf '%s' "$refs" | grep -c .)" != 1 ] || ! printf '%s' "$refs" | grep -qE '@sha256:[0-9a-f]{64}$'; then
+            echo "::error::docker-compose.yml: serve una sola immagine pgvector fissata per digest (trovato: '${refs}')"
+            exit 1
+          fi
+          echo "postgres=${refs}" >> "$GITHUB_OUTPUT"
+
+  # Test di integrazione su Postgres vero (*.integration.spec.ts e lo spec del globalSetup):
+  # job separato perche' i service container partono per tutto il job. Solo in merge queue:
+  # sulla PR il job risulta saltato, che per un required check vale verde.
+  integration-tests:
+    needs: images
+    # !cancelled(): se images fallisce il job parte e fallisce al primo step, invece di
+    # risultare saltato (un required check saltato vale verde e images non e' required).
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: ${{ needs.images.outputs.postgres }}
+        env:
+          POSTGRES_USER: attipa
+          POSTGRES_PASSWORD: attipa
+          POSTGRES_DB: attipa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U attipa -d attipa_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://attipa:attipa@localhost:5432/attipa_test
+      # Il globalSetup Vitest migra il DB solo con questa variabile.
+      TEST_DB_MIGRATE: '1'
+
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+
+      - name: Immagine del service disponibile
+        if: needs.images.result != 'success'
+        env:
+          IMAGES_RESULT: ${{ needs.images.result }}
+        run: |
+          echo "::error::Job images non riuscito (${IMAGES_RESULT}): immagine postgres non letta da docker-compose.yml"
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Versione Node dall'immagine base
+        id: node
+        run: |
+          major=$(sed -nE 's/^FROM node:([0-9]+)-.*/\1/p' apps/backend/Dockerfile | head -n1)
+          [ -n "$major" ] || { echo "::error::FROM node:<major> non trovato in apps/backend/Dockerfile"; exit 1; }
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ steps.node.outputs.major }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build shared-types
+        run: pnpm --filter @attipa/shared-types run build
+
+      # Filtro Vitest per sottostringa del path. Due fusi: CI in UTC, container in Europe/Rome.
+      - name: Test di integrazione (UTC)
+        env:
+          TZ: UTC
+        run: pnpm --filter backend exec vitest run integration global-setup
+
+      - name: Test di integrazione (Europe/Rome)
+        env:
+          TZ: Europe/Rome
+        run: pnpm --filter backend exec vitest run integration global-setup
+
   # Suite pytest dei servizi Python nelle immagini dev (stessa base e stesse librerie di
   # sistema della produzione: Firebird embedded, LibreOffice), dipendenze di test dal lock
   # con hash. Solo in merge queue. Il required check è python-tests-ok (sotto): i job di una

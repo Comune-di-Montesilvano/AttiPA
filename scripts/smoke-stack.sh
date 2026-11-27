@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/smoke-stack.sh — smoke test dello stack di produzione (docker-compose.yml) gia'
 # avviato: servizi su, frontend e API attraverso nginx, backend → tinn-gateway, conversione
-# docgen, Firebird embedded da utente non root, filesystem in sola lettura.
+# docgen, Firebird embedded da utente non root, filesystem in sola lettura, Postgres migrato,
+# login obbligatorio sulle API.
 # Usato da release.yml prima di pubblicare i tag; in locale:
 #   docker compose -f docker-compose.yml -p smoke --env-file <env> up -d
 #   COMPOSE="docker compose -f docker-compose.yml -p smoke --env-file <env>" scripts/smoke-stack.sh
@@ -27,7 +28,7 @@ done
 version=$(curl -fsS "$ADMIN/api/version") || fail "backend non raggiungibile da $ADMIN/api/version entro ${TIMEOUT}s"
 ok "versione $version"
 
-for svc in backend tinn-gateway docgen frontend-admin; do
+for svc in postgres backend tinn-gateway docgen frontend-admin; do
   state=$($COMPOSE ps -a --format '{{.State}}' "$svc")
   [ "$state" = running ] || fail "$svc in stato '$state'"
 done
@@ -39,9 +40,32 @@ curl -fsS "$ADMIN/config.js" | grep -q "apiBase: '/api'" || fail "config.js non 
 curl -fsS -o /dev/null "$ADMIN/" || fail "$ADMIN/ non servito"
 ok "frontend, config.js e proxy /api"
 
-# Stack nuovo: DB Tinn mai ripristinato, date null.
-curl -fsS "$ADMIN/api/tinn/info" | grep -q '"backupDate":null' || fail "backend → tinn-gateway (/api/tinn/info)"
-ok "backend → tinn-gateway"
+# Migration eseguite all'avvio del backend (schema e pgvector).
+$COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM migrations" -c "SELECT extname FROM pg_extension"' \
+  | tr '\n' ' ' | grep -qE '^[1-9][0-9]* .*vector' || fail "migration o estensione vector assenti"
+ok "Postgres: migration e pgvector"
+
+# API protette: senza token 401; login senza LDAP configurato 503 (nessun accesso simulato
+# in produzione).
+code=$(curl -s -o /dev/null -w '%{http_code}' "$ADMIN/api/tinn/info")
+[ "$code" = 401 ] || fail "/api/tinn/info senza token: $code invece di 401"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$ADMIN/api/auth/login" -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin"}')
+[ "$code" = 503 ] || fail "login senza LDAP configurato: $code invece di 503"
+ok "API protette, nessun login simulato"
+
+# Token operatore firmato con il JWT_SECRET del container (HS256 con crypto di Node, nessuna
+# dipendenza): stack nuovo, DB Tinn mai ripristinato, date null.
+token=$($COMPOSE exec -T backend node -e '
+const { createHmac } = require("node:crypto");
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const now = Math.floor(Date.now() / 1000);
+const body = b64({ alg: "HS256", typ: "JWT" }) + "." + b64({ sub: "smoke", username: "smoke", displayName: "Smoke", role: "user", type: "operator", iat: now, exp: now + 300 });
+process.stdout.write(body + "." + createHmac("sha256", process.env.JWT_SECRET).update(body).digest("base64url"));
+') || fail "firma del token di prova"
+curl -fsS "$ADMIN/api/tinn/info" -H "Authorization: Bearer $token" | grep -q '"backupDate":null' \
+  || fail "backend → tinn-gateway con token (/api/tinn/info)"
+ok "token operatore e backend → tinn-gateway"
 
 # Firebird embedded come utente 10001 su /data (volume) e /tmp (tmpfs): crea un DB dialect 1,
 # backup e ripristino con gbak (lo stesso percorso della sync), query con il driver.
@@ -81,7 +105,7 @@ assert urllib.request.urlopen(req, timeout=120).read().startswith(b'%PDF')
 EOF
 ok "docgen: RTF → PDF"
 
-for svc in backend tinn-gateway docgen; do
+for svc in postgres backend tinn-gateway docgen; do
   if $COMPOSE exec -T "$svc" sh -c 'touch /smoke' 2>/dev/null; then
     fail "filesystem di $svc scrivibile: read_only non applicato"
   fi

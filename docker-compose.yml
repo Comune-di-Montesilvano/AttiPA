@@ -12,6 +12,16 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+# Postgres scrive come utente postgres sui file del volume: servono queste capability
+# (cap_drop ALL le toglierebbe), nient'altro.
+x-db-caps: &db-caps
+  cap_add:
+    - CHOWN
+    - DAC_OVERRIDE
+    - FOWNER
+    - SETUID
+    - SETGID
+
 services:
 
   # Verifica delle firme cosign delle 4 immagini di ${IMAGE_TAG} prima di avviarle
@@ -43,6 +53,30 @@ services:
           "$$R-tinn-gateway:$$IMAGE_TAG" "$$R-docgen:$$IMAGE_TAG" >/dev/null
         echo "Firme verificate: $$IMAGE_TAG"
 
+  # Postgres 18 con pgvector (ricerca semantica su regolamenti e atti).
+  postgres:
+    <<: [*hardening, *db-caps]
+    image: pgvector/pgvector:0.8.7-pg18-trixie@sha256:ab49524d18df7200b74ac9a475e1db6297fc1eb57da4c214c63d10ecc4b754fa
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/run/postgresql
+      - /tmp
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER obbligatorio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obbligatoria - genera con openssl rand -hex 16}
+      POSTGRES_DB: ${POSTGRES_DB:-attipa}
+    volumes:
+      # Postgres 18+: un solo mount su /var/lib/postgresql (dati in 18/docker).
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - attipa-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     <<: *hardening
     image: ghcr.io/comune-di-montesilvano/attipa-backend:${IMAGE_TAG:-latest}
@@ -53,6 +87,16 @@ services:
       NODE_ENV: production
       PORT: "8080"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-attipa}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET obbligatorio - genera con openssl rand -hex 32}
+      LDAP_HOST: ${LDAP_HOST:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+      LDAP_USER_DN_TEMPLATE: ${LDAP_USER_DN_TEMPLATE:-%s}
+      LDAP_TLS_SKIP_VERIFY: ${LDAP_TLS_SKIP_VERIFY:-false}
+      LDAP_STARTTLS: ${LDAP_STARTTLS:-false}
+      LDAP_REQUIRED_GROUP: ${LDAP_REQUIRED_GROUP:-ATTIPA_USERS}
+      LDAP_ADMIN_GROUP: ${LDAP_ADMIN_GROUP:-ATTIPA_ADMINS}
+      LDAP_ADMIN_USERNAMES: ${LDAP_ADMIN_USERNAMES:-}
       TINN_GATEWAY_URL: http://tinn-gateway:8000
       DOCGEN_URL: http://docgen:8000
       LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
@@ -63,6 +107,8 @@ services:
     depends_on:
       verify-images:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     networks:
       - attipa-net
 
@@ -137,6 +183,7 @@ services:
       - attipa-net
 
 volumes:
+  postgres_data:
   tinn_data:
 
 networks:
