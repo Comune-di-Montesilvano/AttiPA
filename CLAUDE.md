@@ -150,14 +150,15 @@ Non ancora presenti (prossimi passi): Redis/BullMQ, regolamenti e norme con embe
 ```bash
 cp .env.example .env            # decommentare COMPOSE_FILE per lo sviluppo
 docker compose build
-docker compose up -d            # admin http://localhost:${ADMIN_PORT}, backend http://localhost:${BACKEND_PORT}
+docker compose up -d            # http://localhost:${ADMIN_PORT} (API su /api)
 ```
 
 - `.env` di sviluppo: `POSTGRES_PASSWORD`, `JWT_SECRET` (anche corti in dev) e `LDAP_HOST=mock`.
 - Il watch di Nest non vede le modifiche dai bind mount di Windows: `docker compose restart backend`.
-- Porte solo dal `.env` (`ADMIN_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`). In dev il browser chiama
-  `/api` sul server Vite, che lo inoltra a `backend:8080` (`vite.config.ts`, come nginx in produzione):
-  nessuna porta del backend nel frontend, niente CORS. Esposizione con Traefik: `docker-compose.traefik.yml`.
+- Unica porta sull'host: `ADMIN_PORT` (dal `.env`); con Traefik nessuna (`docker-compose.traefik.yml`).
+  Backend, Postgres, gateway e Ollama solo sulla rete interna. In dev il browser chiama `/api` sul server
+  Vite, che lo inoltra a `backend:8080` (`vite.config.ts`, come nginx in produzione). Test nel container
+  backend, SQL con `docker compose exec postgres psql`.
 
 - Compose diviso come ComunicaPA: `docker-compose.yml` = produzione (immagini ghcr, volumi
   named, `read_only`, `cap_drop: ALL`), `docker-compose.override.yml` = sviluppo (build da

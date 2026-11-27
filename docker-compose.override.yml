@@ -3,10 +3,9 @@
 
 services:
 
-  # Solo dev: Postgres raggiungibile dall'host (test di integrazione, client SQL), solo su localhost.
-  postgres:
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+  # Unica porta sull'host: ADMIN_PORT (Vite). Backend e Postgres restano sulla rete interna:
+  # il browser passa dal proxy /api di Vite, i test girano nel container backend,
+  # SQL con `docker compose exec postgres psql -U attipa attipa`.
 
   backend:
     image: attipa/backend:dev
@@ -15,10 +14,6 @@ services:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile.dev
-    # Solo dev: backend raggiungibile dall'host per curl/test. Il browser passa dal proxy
-    # /api di Vite (vite.config.ts), quindi BACKEND_PORT puo' essere qualsiasi.
-    ports:
-      - "${BACKEND_PORT:-8080}:8080"
     environment:
       NODE_ENV: development
     volumes:
