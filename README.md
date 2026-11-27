@@ -8,15 +8,15 @@ la normativa nazionale e i modelli di atto, e usa un modello linguistico a scelt
 (locale per default) per proporre testi e controlli: capitolo e disponibilità, incentivi,
 contributo ANAC, CIG/CUP, oggetto entro 255 caratteri.
 
-> Stato: in sviluppo. Login su Active Directory e assistente che interroga la contabilità
-> Tinn presenti; mancano base documentale, server MCP e redazione degli atti.
+> Stato: in sviluppo. Login su Active Directory, assistente che interroga la contabilità
+> Tinn e server MCP (facoltativo) presenti; mancano base documentale e redazione degli atti.
 
 ## Componenti
 
 | Servizio | Tecnologia | Ruolo |
 |---|---|---|
 | `frontend-admin` | React + Vite, nginx | interfaccia operatori |
-| `backend` | NestJS | API, orchestrazione, assistente IA (provider compatibili OpenAI), (in arrivo) server MCP |
+| `backend` | NestJS | API, orchestrazione, assistente IA (provider compatibili OpenAI), server MCP con token personali |
 | `tinn-gateway` | FastAPI + Firebird 5 embedded | sync giornaliera del backup Tinn, query in sola lettura |
 | `docgen` | FastAPI + LibreOffice | conversione documenti (RTF/DOCX/ODT → PDF) |
 | `postgres` | Postgres 18 + pgvector | operatori, impostazioni, (in arrivo) atti e regolamenti |

@@ -9,6 +9,8 @@ import { DatabaseModule } from './database/database.module.js';
 import { TinnModule } from './tinn/tinn.module.js';
 import { LlmModule } from './llm/llm.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
+import { TokensModule } from './tokens/tokens.module.js';
+import { McpModule } from './mcp/mcp.module.js';
 import configuration from './config/configuration.js';
 
 @Module({
@@ -22,6 +24,8 @@ import configuration from './config/configuration.js';
     TinnModule,
     LlmModule,
     AssistantModule,
+    TokensModule,
+    McpModule,
   ],
   controllers: [AppController],
   providers: [

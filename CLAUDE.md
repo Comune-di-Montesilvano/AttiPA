@@ -37,8 +37,7 @@ postgres               pgvector/pgvector (Postgres 18 + pgvector) — utenti, im
 ollama                 modello locale, facoltativo (profilo compose `llm-locale`)
 ```
 
-Non ancora presenti (prossimi passi): server MCP, Redis/BullMQ, regolamenti e norme con
-embedding (pgvector).
+Non ancora presenti (prossimi passi): Redis/BullMQ, regolamenti e norme con embedding (pgvector).
 
 ### IA
 
@@ -115,6 +114,23 @@ embedding (pgvector).
 - DB dialect 1, charset `NONE` con byte WIN1252, CHAR con spazi in coda: `app/db.py: to_json`
   decodifica cp1252, toglie gli spazi e arrotonda i double al centesimo.
 - Parametro più lungo della colonna confrontata → Firebird «string right truncation» → 400.
+
+### Server MCP
+
+- `apps/backend/src/mcp`: `ALL /mcp` (`/api/mcp` dietro nginx) con `@modelcontextprotocol/server`
+  v2 (`createMcpHandler`): protocollo 2026-07-28 e fallback stateless per i client 2025, una
+  istanza di `McpServer` per richiesta con gli strumenti di `tools/TinnToolsService` (gli stessi
+  dell'assistente), annotati `readOnlyHint`, risposta JSON. Schemi JSON delle query passati con
+  `fromJsonSchema` (validatore ajv incluso nel pacchetto).
+- Spento di default (`MCP_ENABLED=false` → 404): i client mandano i dati Tinn al loro modello.
+- Autenticazione: niente JWT operatore (`@Public` in allowlist), token personale
+  `Authorization: Bearer attipa_pat_<32 byte base64url>`. Tabella `api_tokens`: SHA-256 del token
+  (mai in chiaro), prefisso, scadenza (max `MCP_TOKEN_MAX_DAYS`, default 90), revoca, ultimo uso
+  (aggiornato al più ogni 5 minuti), max 10 attivi per operatore. `GET/POST /tokens`,
+  `DELETE /tokens/:id`: ognuno vede e revoca solo i propri.
+- Limite noto: il token vale finché non scade o viene revocato anche se l'operatore esce dal
+  gruppo AD (il ruolo è quello dell'ultimo login). Scadenza breve per questo.
+- Log: utente e nome dello strumento, mai parametri o risultati.
 
 ### Ollama
 

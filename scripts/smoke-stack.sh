@@ -69,6 +69,10 @@ ok "token operatore e backend → tinn-gateway"
 # Nessun modello nello smoke: lo stato dell'IA risponde con l'errore di configurazione.
 curl -fsS "$ADMIN/api/llm/status" -H "Authorization: Bearer $token" | grep -q '"error":"LLM_MODEL non configurato"'   || fail "/api/llm/status"
 ok "stato IA senza modello configurato"
+# Server MCP spento di default: 404 anche con un token qualsiasi.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$ADMIN/api/mcp" -H "Authorization: Bearer attipa_pat_x")
+[ "$code" = 404 ] || fail "/api/mcp con MCP spento: $code invece di 404"
+ok "server MCP spento di default"
 
 # Firebird embedded come utente 10001 su /data (volume) e /tmp (tmpfs): crea un DB dialect 1,
 # backup e ripristino con gbak (lo stesso percorso della sync), query con il driver.

@@ -26,6 +26,8 @@ describe.skipIf(!process.env.DATABASE_URL)('login e rotte protette', () => {
     vi.stubEnv('LDAP_HOST', 'mock');
     vi.stubEnv('JWT_SECRET', 'x'.repeat(64));
     vi.stubEnv('TINN_GATEWAY_URL', 'http://127.0.0.1:9');
+    // Default di produzione, indipendente dal .env di chi lancia i test.
+    vi.stubEnv('MCP_ENABLED', 'false');
     const { AppModule } = await import('../app.module.js');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -81,6 +83,12 @@ describe.skipIf(!process.env.DATABASE_URL)('login e rotte protette', () => {
     const me = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${body.access_token}` } });
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({ username: 'admin', role: 'admin', type: 'operator' });
+
+    // MCP spento (default): endpoint 404 anche con token, niente creazione di token personali.
+    expect((await fetch(`${base}/mcp`, { method: 'POST', headers: { Authorization: 'Bearer attipa_pat_x' } })).status).toBe(404);
+    const auth = { Authorization: `Bearer ${body.access_token}`, 'Content-Type': 'application/json' };
+    expect((await fetch(`${base}/tokens`, { method: 'POST', headers: auth, body: JSON.stringify({ name: 'x', days: 1 }) })).status).toBe(403);
+    expect(await (await fetch(`${base}/tokens`, { headers: auth })).json()).toMatchObject({ mcpEnabled: false, tokens: [] });
 
     // Con il token si passa la guard: la rotta Tinn risponde 503 (gateway assente), non 401.
     const tinn = await fetch(`${base}/tinn/info`, { headers: { Authorization: `Bearer ${body.access_token}` } });
