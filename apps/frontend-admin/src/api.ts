@@ -1,4 +1,13 @@
-import type { AssistantChatResponse, AssistantMessage, AuthResponse, LlmStatus, TinnInfo, VersionInfo } from '@attipa/shared-types';
+import type {
+  ApiTokensResponse,
+  AssistantChatResponse,
+  AssistantMessage,
+  AuthResponse,
+  CreatedApiToken,
+  LlmStatus,
+  TinnInfo,
+  VersionInfo,
+} from '@attipa/shared-types';
 import { clearSession, loadSession } from './session';
 
 export function apiBase(config: Window['__ATTIPA_CONFIG__']): string {
@@ -40,6 +49,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -48,6 +58,10 @@ export const getTinnInfo = () => request<TinnInfo>('/tinn/info');
 export const getLlmStatus = () => request<LlmStatus>('/llm/status');
 export const askAssistant = (messages: AssistantMessage[]) =>
   request<AssistantChatResponse>('/assistant/chat', { method: 'POST', body: JSON.stringify({ messages }) });
+export const listTokens = () => request<ApiTokensResponse>('/tokens');
+export const createToken = (name: string, days: number) =>
+  request<CreatedApiToken>('/tokens', { method: 'POST', body: JSON.stringify({ name, days }) });
+export const revokeToken = (id: string) => request<void>(`/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 export async function login(username: string, password: string): Promise<AuthResponse> {
   try {

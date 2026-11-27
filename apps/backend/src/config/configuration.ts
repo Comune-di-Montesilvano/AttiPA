@@ -25,6 +25,14 @@ export interface AppConfiguration {
   };
   /** Servizio interno che espone il DB Tinn in sola lettura. */
   tinnGatewayUrl: string;
+  mcp: {
+    /** Server MCP su /mcp. Spento di default: i client MCP mandano i dati Tinn al loro modello (cloud). */
+    enabled: boolean;
+    /** Durata massima di un token personale. */
+    tokenMaxDays: number;
+    /** URL pubblico dell'endpoint MCP mostrato agli operatori (es. https://attipa.ente.it/api/mcp). */
+    publicUrl: string;
+  };
   /** Servizio interno di generazione documenti (RTF/DOCX/PDF). */
   docgenUrl: string;
   llm: {
@@ -68,6 +76,11 @@ export default (): AppConfiguration => ({
       .filter((u) => u.length > 0),
   },
   tinnGatewayUrl: process.env['TINN_GATEWAY_URL'] ?? 'http://tinn-gateway:8000',
+  mcp: {
+    enabled: process.env['MCP_ENABLED'] === 'true',
+    tokenMaxDays: Number(process.env['MCP_TOKEN_MAX_DAYS'] || 90),
+    publicUrl: process.env['MCP_PUBLIC_URL'] || '',
+  },
   docgenUrl: process.env['DOCGEN_URL'] ?? 'http://docgen:8000',
   // `||` e non `??`: il compose passa le variabili non impostate come stringa vuota.
   llm: {

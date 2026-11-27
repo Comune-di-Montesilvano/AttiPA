@@ -19,6 +19,9 @@ const PUBLIC_ALLOWLIST = [
   'GET /', // health
   'GET /version',
   'POST /auth/login',
+  // Niente JWT operatore: McpController verifica il token personale (TokensService.verify),
+  // 401 senza token valido, 404 se MCP_ENABLED non è true (mcp.controller.spec.ts).
+  'ALL /mcp',
 ];
 
 describe('Inventario sicurezza route', () => {
@@ -49,7 +52,11 @@ describe('Inventario sicurezza route', () => {
       POST /auth/login | public | roles=- | guards=-
       GET /auth/me | auth | roles=- | guards=-
       GET /llm/status | auth | roles=- | guards=-
+      ALL /mcp | public | roles=- | guards=-
       GET /tinn/info | auth | roles=- | guards=-
+      GET /tokens | auth | roles=- | guards=-
+      POST /tokens | auth | roles=- | guards=-
+      DELETE /tokens/:id | auth | roles=- | guards=-
       GET /version | public | roles=- | guards=-
       "
     `);

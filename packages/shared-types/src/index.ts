@@ -71,6 +71,33 @@ export interface AssistantChatResponse {
   steps: AssistantStep[];
 }
 
+/** Token personale per i client MCP (mai il token in chiaro, tranne alla creazione). */
+export interface ApiTokenInfo {
+  id: string;
+  name: string;
+  /** Primi caratteri, per riconoscerlo. */
+  prefix: string;
+  createdAt: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+/** GET /tokens */
+export interface ApiTokensResponse {
+  /** Server MCP attivo (MCP_ENABLED). */
+  mcpEnabled: boolean;
+  /** URL dell'endpoint MCP da configurare nel client, vuoto se non impostato. */
+  mcpUrl: string;
+  maxDays: number;
+  tokens: ApiTokenInfo[];
+}
+
+/** POST /tokens: il token in chiaro compare solo qui. */
+export interface CreatedApiToken extends ApiTokenInfo {
+  token: string;
+}
+
 /**
  * Importo in formato italiano: 1.234,56 €. A mano e non con Intl: in it-IT
  * Intl non separa le migliaia sotto 10.000 (1234,56).

@@ -3,7 +3,15 @@ import { BadRequestException, ServiceUnavailableException } from '@nestjs/common
 import type { LlmService } from '../llm/llm.service.js';
 import { LlmError, type ChatRequest, type ChatResult } from '../llm/llm.types.js';
 import type { TinnService } from '../tinn/tinn.service.js';
-import { AssistantService } from './assistant.service.js';
+import { TinnToolsService } from '../tools/tinn-tools.service.js';
+import { AssistantService as Svc } from './assistant.service.js';
+
+/** Servizio con il vero TinnToolsService sopra il TinnService finto. */
+class AssistantService extends Svc {
+  constructor(llm: LlmService, tinn: TinnService) {
+    super(llm, new TinnToolsService(tinn));
+  }
+}
 
 const queries = [{ name: 'storia_capitolo', description: 'Storia', params: [{ name: 'CAPITOLO', type: 'number' as const }] }];
 

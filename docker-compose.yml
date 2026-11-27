@@ -105,6 +105,9 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-}
       LLM_MAX_STEPS: ${LLM_MAX_STEPS:-}
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_TOKEN_MAX_DAYS: ${MCP_TOKEN_MAX_DAYS:-}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
     tmpfs:
       - /tmp
     depends_on:

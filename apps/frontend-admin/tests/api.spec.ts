@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, SESSION_EXPIRED_EVENT, apiBase, formatDateTime, getTinnInfo, login, loginErrorMessage } from '../src/api';
+import { ApiError, SESSION_EXPIRED_EVENT, apiBase, formatDateTime, getTinnInfo, login, loginErrorMessage, revokeToken } from '../src/api';
 import { saveSession } from '../src/session';
 
 describe('apiBase', () => {
@@ -63,6 +63,16 @@ describe('richieste al backend', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/tinn/info');
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok');
+  });
+
+  it('revoca token: DELETE con id codificato, 204 senza corpo', async () => {
+    browser();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(revokeToken('a/b')).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/tokens/a%2Fb');
+    expect(init.method).toBe('DELETE');
   });
 
   it('401 con sessione: sessione cancellata ed evento di scadenza', async () => {
