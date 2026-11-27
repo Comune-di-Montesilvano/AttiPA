@@ -45,8 +45,10 @@ describe('Inventario sicurezza route', () => {
     expect('\n' + table + '\n').toMatchInlineSnapshot(`
       "
       GET / | public | roles=- | guards=-
+      POST /assistant/chat | auth | roles=- | guards=-
       POST /auth/login | public | roles=- | guards=-
       GET /auth/me | auth | roles=- | guards=-
+      GET /llm/status | auth | roles=- | guards=-
       GET /tinn/info | auth | roles=- | guards=-
       GET /version | public | roles=- | guards=-
       "

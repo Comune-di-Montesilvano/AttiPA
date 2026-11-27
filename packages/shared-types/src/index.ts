@@ -37,6 +37,40 @@ export interface AuthResponse {
   role: OperatorRole;
 }
 
+/** GET /llm/status: modello configurato e raggiungibilità dell'endpoint. */
+export interface LlmStatus {
+  provider: string;
+  model: string;
+  /** Host dell'endpoint (senza credenziali né percorso). */
+  endpoint: string;
+  reachable: boolean;
+  /** Il modello configurato è tra quelli offerti dall'endpoint. */
+  modelAvailable: boolean;
+  error?: string;
+}
+
+/** Messaggio della conversazione con l'assistente (solo testo, lato utente). */
+export interface AssistantMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** Strumento usato dall'assistente per rispondere (mostrato all'operatore per trasparenza). */
+export interface AssistantStep {
+  tool: string;
+  params: Record<string, unknown>;
+  /** Righe restituite (assente se errore). */
+  rows?: number;
+  truncated?: boolean;
+  error?: string;
+}
+
+/** POST /assistant/chat */
+export interface AssistantChatResponse {
+  reply: string;
+  steps: AssistantStep[];
+}
+
 /**
  * Importo in formato italiano: 1.234,56 €. A mano e non con Intl: in it-IT
  * Intl non separa le migliaia sotto 10.000 (1234,56).

@@ -34,10 +34,33 @@ packages/shared-types/ @attipa/shared-types — tipi e helper condivisi (formatE
 services/tinn-gateway/ FastAPI + Firebird 5 embedded — sync del backup Tinn e query in sola lettura
 services/docgen/       FastAPI + LibreOffice headless — conversione RTF/DOCX/ODT → PDF/DOCX/ODT
 postgres               pgvector/pgvector (Postgres 18 + pgvector) — utenti, impostazioni, poi atti e regolamenti
+ollama                 modello locale, facoltativo (profilo compose `llm-locale`)
 ```
 
-Non ancora presenti (prossimi passi): Redis/BullMQ, adattatore LLM, server MCP, servizio
-Ollama nel compose, regolamenti e norme con embedding (pgvector).
+Non ancora presenti (prossimi passi): server MCP, Redis/BullMQ, regolamenti e norme con
+embedding (pgvector).
+
+### IA
+
+- `apps/backend/src/llm`: interfaccia `LlmProvider` (`chat` con strumenti, `models`), oggi un solo
+  provider `openai-compatible` (fetch a `/chat/completions` e `/models`, nessun SDK). Chat sempre
+  in streaming SSE: senza, la fetch di Node chiude dopo 300 s senza header (`headersTimeout` di
+  undici, «Modello non raggiungibile (UND_ERR_HEADERS_TIMEOUT)»). Argomenti degli strumenti
+  accettati sia come stringa JSON (OpenAI) sia come oggetto (Ollama), anche a frammenti.
+  `GET /llm/status`: modello, host dell'endpoint (mai la chiave), raggiungibile, modello presente.
+- `apps/backend/src/assistant`: `POST /assistant/chat` (`{messages:[{role:user|assistant, content}]}`,
+  niente ruoli system/tool dal client). Ciclo strumenti: `tinn_info` + uno strumento `tinn_<query>`
+  per ogni query della whitelist di tinn-gateway (descrizione = commento in testa al `.sql`,
+  parametri tutti obbligatori, numeri passati come stringa convertiti). Errori degli strumenti
+  restituiti al modello come testo; al massimo `LLM_MAX_STEPS` chiamate, poi una finale senza
+  strumenti. Al modello al più 100 righe / 15.000 caratteri per risultato, con nota sul taglio.
+  La risposta riporta gli strumenti usati (`steps`), mostrati all'operatore. Nel log solo utente
+  e nomi degli strumenti, mai domande o risultati.
+- **I risultati delle query (creditori, importi) vanno al modello**: endpoint senza contratto e
+  DPA dell'ente vietati. Default: Ollama del compose, solo rete interna.
+- Su CPU un modello da 4B genera ~7 token/s e qwen3 «ragiona» anche sulle risposte brevi: una
+  domanda con strumenti richiede minuti (`LLM_TIMEOUT_MS`, default 120 s). In produzione serve
+  GPU o un server di inferenza dell'ente.
 
 ### Autenticazione
 
@@ -92,6 +115,12 @@ Ollama nel compose, regolamenti e norme con embedding (pgvector).
 - DB dialect 1, charset `NONE` con byte WIN1252, CHAR con spazi in coda: `app/db.py: to_json`
   decodifica cp1252, toglie gli spazi e arrotonda i double al centesimo.
 - Parametro più lungo della colonna confrontata → Firebird «string right truncation» → 400.
+
+### Ollama
+
+- `docker compose --profile llm-locale up -d ollama`, poi
+  `docker compose exec ollama ollama pull qwen3:4b` e `LLM_MODEL=qwen3:4b` nel `.env`.
+  Nessuna porta sull'host; modelli nel volume `ollama_data`.
 
 ### docgen
 

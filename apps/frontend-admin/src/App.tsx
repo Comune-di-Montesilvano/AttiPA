@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { TinnInfo } from '@attipa/shared-types';
 import { SESSION_EXPIRED_EVENT, formatDateTime, getTinnInfo, getVersion, login } from './api';
 import { clearSession, loadSession, saveSession, sessionFromLogin, type Session } from './session';
+import { Assistant } from './Assistant';
 
-const page = { fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '3rem auto', padding: '0 1rem' } as const;
+const page = { fontFamily: 'system-ui, sans-serif', maxWidth: 860, margin: '3rem auto', padding: '0 1rem' } as const;
 
 export function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession(localStorage));
@@ -109,6 +110,7 @@ function Home() {
       ) : (
         <p>Caricamento…</p>
       )}
+      <Assistant />
     </>
   );
 }

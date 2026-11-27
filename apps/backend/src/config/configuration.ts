@@ -28,10 +28,17 @@ export interface AppConfiguration {
   /** Servizio interno di generazione documenti (RTF/DOCX/PDF). */
   docgenUrl: string;
   llm: {
-    /** openai-compatible (Ollama, vLLM, LocalAI…), anthropic, openai. */
+    /** Oggi solo `openai-compatible` (Ollama, vLLM, LocalAI, OpenAI e altri con /v1/chat/completions). */
     provider: string;
+    /** Base dell'API, es. http://ollama:11434/v1 */
     baseUrl: string;
     model: string;
+    /** Bearer per i provider che la richiedono (vuota per Ollama locale). */
+    apiKey: string;
+    /** Timeout di una singola chiamata al modello. */
+    timeoutMs: number;
+    /** Chiamate al modello per una risposta dell'assistente (strumenti compresi). */
+    maxSteps: number;
   };
 }
 
@@ -62,9 +69,13 @@ export default (): AppConfiguration => ({
   },
   tinnGatewayUrl: process.env['TINN_GATEWAY_URL'] ?? 'http://tinn-gateway:8000',
   docgenUrl: process.env['DOCGEN_URL'] ?? 'http://docgen:8000',
+  // `||` e non `??`: il compose passa le variabili non impostate come stringa vuota.
   llm: {
-    provider: process.env['LLM_PROVIDER'] ?? 'openai-compatible',
-    baseUrl: process.env['LLM_BASE_URL'] ?? 'http://ollama:11434/v1',
-    model: process.env['LLM_MODEL'] ?? '',
+    provider: process.env['LLM_PROVIDER'] || 'openai-compatible',
+    baseUrl: process.env['LLM_BASE_URL'] || 'http://ollama:11434/v1',
+    model: process.env['LLM_MODEL'] || '',
+    apiKey: process.env['LLM_API_KEY'] || '',
+    timeoutMs: Number(process.env['LLM_TIMEOUT_MS'] || 120_000),
+    maxSteps: Number(process.env['LLM_MAX_STEPS'] || 6),
   },
 });
