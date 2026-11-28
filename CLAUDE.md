@@ -144,6 +144,17 @@ Non ancora presenti (prossimi passi): Redis/BullMQ, regolamenti e norme con embe
   Ogni conversione in una cartella temporanea con profilo LibreOffice proprio
   (`-env:UserInstallation`): due soffice sullo stesso profilo si bloccano. Nome del file
   caricato mai nella riga di comando.
+- `POST /markdown` (multipart `file`: .docx .odt .html .htm .rtf .doc .pdf, max 20 MB) →
+  `{markdown, warnings}`: import di regolamenti e documenti (ogni import diventa Markdown).
+  DOCX/ODT/HTML con pandoc (`--to gfm`), RTF/DOC prima in DOCX con LibreOffice, PDF con
+  pypdfium2 (non PyMuPDF: AGPL) + ricucitura righe e rimozione di testata/piè ripetuti.
+  `app/markdown.py` fissa i titoli: `#` documento, `##` Parte/Libro/Titolo/Capo, `###` Sezione,
+  `####` «Art. N[-bis]» (anche da paragrafi in grassetto). PDF senza testo → 422
+  «PDF senza testo (scansione?)». pandoc: .deb della release con `--checksum`, controllato da
+  `toolchain-version-check.yml`.
+- Test locali come in CI (app e test dal working tree, nell'immagine dev; il container dev
+  monta solo `app/`):
+  `MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W)/services/docgen:/src:ro" attipa/docgen:dev sh -ec 'pip install -q --require-hashes --no-deps -r /src/requirements-dev.txt; rm -rf app; cp -r /src/app /src/tests .; python -m pytest tests -q'`.
 
 ## Sviluppo
 

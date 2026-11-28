@@ -1,8 +1,12 @@
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 WORKDIR /svc
+# pandoc (DOCX/ODT/HTML -> Markdown per POST /markdown): release ufficiale verificata con sha256.
+# toolchain-version-check.yml segnala le nuove versioni.
+ADD --checksum=sha256:dedb81f20345b76d7168ba551d90abceb707977fece789a79874094fe3833915 \
+    https://github.com/jgm/pandoc/releases/download/3.14/pandoc-3.14-1-amd64.deb /tmp/pandoc.deb
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation2 tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation2 tzdata /tmp/pandoc.deb \
+    && rm -rf /var/lib/apt/lists/* /tmp/pandoc.deb
 COPY services/docgen/requirements.txt .
 RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt
 COPY services/docgen/app/ ./app/

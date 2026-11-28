@@ -13,6 +13,10 @@ citarli per articolo e controllarli. Su questa base arriveranno poi i **modelli 
 Regola dell'utente: **ogni import viene convertito in Markdown**. Il Markdown è il testo di lavoro
 (ricerca, embedding, citazioni); l'originale si conserva solo per poterlo riconvertire.
 
+Regola dell'utente (2026-11-28): **i testi in uscita sono sempre RTF**. Markdown dentro, RTF fuori:
+la generazione degli atti (passo successivo) produce RTF (docgen: pandoc/LibreOffice), mai
+Markdown o DOCX come risultato finale.
+
 ## Obiettivi
 
 - Admin aggiunge una legge con il suo riferimento Normattiva (URN o URL); AttiPA scarica il testo

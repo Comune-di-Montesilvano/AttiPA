@@ -35,3 +35,9 @@ def test_riferimenti_nel_testo_non_titoli():
 def test_immagini_e_righe_vuote():
     md, _ = normalize('Art. 1\n\n\n\n![logo](media/a.png)\n\nTesto.')
     assert '![' not in md and '\n\n\n' not in md
+
+
+def test_escape_di_pandoc_su_commi_ed_elenchi():
+    md, _ = normalize('Art. 2\n\n1\\. Il fondo è costituito da:\n\na\\) prima voce;')
+    assert '#### Art. 2\n' in md
+    assert '1. Il fondo è costituito da:' in md and 'a) prima voce;' in md

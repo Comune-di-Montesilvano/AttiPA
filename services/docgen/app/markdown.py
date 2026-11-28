@@ -15,6 +15,7 @@ SECTION_RE = re.compile(r'^(sezione)\s+([IVXLCDM]+|\d+)\b' + SEP + r'(.*)$', re.
 MD_HEADING_RE = re.compile(r'^#{1,6}\s+(.*)$')
 IMAGE_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
 ITEM_RE = re.compile(r'^(\d+\.|[a-z]\))\s')
+PANDOC_ESCAPE_RE = re.compile(r'^(\s*\d+|\s*[a-z])\\([.)])')
 
 MAX_LINE = 200
 MAX_TITLE_LINE = 120
@@ -70,7 +71,9 @@ def _next_title(lines, i):
 
 
 def normalize(md):
-    lines = [IMAGE_RE.sub('', line).rstrip() for line in md.replace('\r\n', '\n').split('\n')]
+    # pandoc scrive «1\.» e «a\)» per non creare elenchi: tolti, i commi restano riconoscibili.
+    lines = [PANDOC_ESCAPE_RE.sub(r'\1\2', IMAGE_RE.sub('', line).rstrip())
+             for line in md.replace('\r\n', '\n').split('\n')]
     out = []
     seen_title = seen_structure = False
     articles = 0
