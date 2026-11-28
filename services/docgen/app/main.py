@@ -117,7 +117,9 @@ async def markdown(file: UploadFile):
 
 @app.post('/convert')
 async def convert(file: UploadFile, target: str = 'pdf'):
-    if target not in OUTPUTS:
+    # Formato preso dalla whitelist, non dal parametro: nei percorsi entrano solo costanti.
+    target = next((t for t in sorted(OUTPUTS) if t == target), None)
+    if target is None:
         raise HTTPException(status_code=400, detail='formato di destinazione non ammesso')
     ext, data = await read_upload(file, INPUTS)
     if target == ext[1:]:
