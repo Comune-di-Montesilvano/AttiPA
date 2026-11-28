@@ -54,8 +54,10 @@ def convert_file(src, target, workdir):
 
 async def read_upload(file, allowed):
     """Estensione e contenuto del file caricato, con controllo di formato e dimensione."""
-    ext = os.path.splitext(file.filename or '')[1].lower()
-    if ext not in allowed:
+    uploaded = os.path.splitext(file.filename or '')[1].lower()
+    # Estensione presa dalla whitelist, non dal nome caricato: nei percorsi entrano solo costanti.
+    ext = next((e for e in sorted(allowed) if e == uploaded), None)
+    if ext is None:
         raise HTTPException(status_code=400, detail='formato di origine non ammesso')
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
