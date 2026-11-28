@@ -13,7 +13,7 @@ from fastapi.responses import Response
 import pypdfium2 as pdfium
 
 from app.markdown import normalize
-from app.pdf import pages_to_text, pdf_pages
+from app.pdf import pdf_markdown, pdf_pages
 
 app = FastAPI(title='docgen', docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -21,8 +21,8 @@ SOFFICE = os.environ.get('SOFFICE', 'soffice')
 PANDOC = os.environ.get('PANDOC', 'pandoc')
 PANDOC_FORMATS = {'.docx': 'docx', '.odt': 'odt', '.html': 'html', '.htm': 'html'}
 MARKDOWN_INPUTS = set(PANDOC_FORMATS) | {'.rtf', '.doc', '.pdf'}
-MIN_PDF_CHARS = 50
-NO_TEXT = 'PDF senza testo (scansione?)'
+# Titolo di Word (stile Titolo) dai metadati del DOCX/ODT, perso senza template.
+TITLE_TEMPLATE = os.path.join(os.path.dirname(__file__), 'title.gfm')
 TIMEOUT = int(os.environ.get('DOCGEN_TIMEOUT', '120'))
 MAX_BYTES = 20 * 1024 * 1024
 INPUTS = {'.rtf', '.docx', '.doc', '.odt'}
@@ -73,8 +73,14 @@ def save(work, ext, data):
 
 def pandoc_to_markdown(src, fmt, workdir):
     out = os.path.join(workdir, 'documento.md')
+    # --sandbox: nessun accesso a rete o file oltre all'input (un <iframe src> di un HTML
+    # caricato verrebbe scaricato e copiato nel testo). gfm-raw_html: niente HTML grezzo
+    # (immagini con attributi, script, tabelle complesse) nel Markdown.
+    cmd = [PANDOC, '--sandbox', '--from', fmt, '--to', 'gfm-raw_html', '--wrap=none', '-o', out]
+    if fmt in ('docx', 'odt'):
+        cmd += ['--standalone', '--template', TITLE_TEMPLATE]
     res = subprocess.run(
-        [PANDOC, '--from', fmt, '--to', 'gfm', '--wrap=none', '-o', out, src],
+        cmd + [src],
         capture_output=True, timeout=TIMEOUT,
     )
     if res.returncode != 0 or not os.path.exists(out):
@@ -86,12 +92,7 @@ def pandoc_to_markdown(src, fmt, workdir):
 def to_markdown(src, ext, workdir):
     """Markdown grezzo del documento e avvisi."""
     if ext == '.pdf':
-        pages = pdf_pages(src)
-        if sum(len(''.join(p.split())) for p in pages) < MIN_PDF_CHARS:
-            raise RuntimeError(NO_TEXT)
-        empty = sum(1 for p in pages if not p.strip())
-        warnings = ['%d pagine senza testo' % empty] if empty else []
-        return pages_to_text(pages), warnings
+        return pdf_markdown(pdf_pages(src))
     if ext in ('.rtf', '.doc'):
         src, ext = convert_file(src, 'docx', workdir), '.docx'
     return pandoc_to_markdown(src, PANDOC_FORMATS[ext], workdir), []

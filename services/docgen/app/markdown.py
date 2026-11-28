@@ -7,11 +7,17 @@ il documento le ha in grassetto e non come stili di titolo.
 import re
 
 SUFFIXES = 'bis|ter|quater|quinquies|sexies|septies|octies|novies|decies'
-SEP = r'\s*[.:–—-]?\s*'
+# Separatore esplicito tra numero e titolo (gruppo vuoto se manca).
+SEP = r'\s*([.:–—-]?)\s*'
+NUMERAL = r'((?-i:[IVXLCDM]+)|\d+)\b'
+# «Art.» con maiuscola: «art. 45 D.Lgs. …» a inizio riga (a capo di un PDF) è un richiamo.
 ARTICLE_RE = re.compile(
-    r'^(?:art\.|articolo)\s*(\d+)(?:\s*[-‐–]?\s*(' + SUFFIXES + r'))?\b' + SEP + r'(.*)$', re.I)
-PART_RE = re.compile(r'^(parte|libro|titolo|capo)\s+([IVXLCDM]+|\d+)\b' + SEP + r'(.*)$', re.I)
-SECTION_RE = re.compile(r'^(sezione)\s+([IVXLCDM]+|\d+)\b' + SEP + r'(.*)$', re.I)
+    r'^(?:Art\.|ART\.|Articolo|ARTICOLO)\s*(\d+)(?:\s*[-‐–]?\s*((?i:' + SUFFIXES + r')))?\b' + SEP + r'(.*)$')
+PART_RE = re.compile(r'^(parte|libro|titolo|capo)\s+' + NUMERAL + SEP + r'(.*)$', re.I)
+SECTION_RE = re.compile(r'^(sezione)\s+' + NUMERAL + SEP + r'(.*)$', re.I)
+# Titolo senza separatore: una parola con iniziale maiuscola («Art. 3 Definizioni»), non una
+# sigla o un'abbreviazione («Art. 45 TUEL», «Art. 5 D.Lgs.»).
+BARE_TITLE_RE = re.compile(r'^[A-ZÀ-Ý][a-zà-ÿ]+(\s|$)')
 MD_HEADING_RE = re.compile(r'^#{1,6}\s+(.*)$')
 IMAGE_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
 ITEM_RE = re.compile(r'^(\d+\.|[a-z]\))\s')
@@ -27,10 +33,15 @@ def plain(line):
     return re.sub(r'\*\*|__', '', s).strip()
 
 
-def _title_ok(title):
-    # «Art. 5 del presente regolamento…» a inizio riga è testo, non titolo: i titoli iniziano
-    # con maiuscola, cifra o virgolette.
-    return not title or not title[0].isalpha() or title[0].isupper()
+def _title(sep, title):
+    # Titolo pulito, oppure None se la riga è testo che inizia con un richiamo
+    # («Art. 183, comma 3, del D.Lgs. …»).
+    title = title.strip()
+    if title.startswith('(') and title.endswith(')'):
+        return title[1:-1].strip() or None
+    if not title or sep or BARE_TITLE_RE.match(title):
+        return title
+    return None
 
 
 def _match(line):
@@ -41,14 +52,13 @@ def _match(line):
     m = ARTICLE_RE.match(s)
     if m:
         num = m.group(1) + ('-' + m.group(2).lower() if m.group(2) else '')
-        title = m.group(3).strip()
-        return (4, 'Art. ' + num, title) if _title_ok(title) else None
+        title = _title(m.group(3), m.group(4))
+        return (4, 'Art. ' + num, title) if title is not None else None
     for rx, level in ((PART_RE, 2), (SECTION_RE, 3)):
         m = rx.match(s)
         if m:
-            num = m.group(2).upper() if not m.group(2).isdigit() else m.group(2)
-            title = m.group(3).strip()
-            return (level, m.group(1).capitalize() + ' ' + num, title) if _title_ok(title) else None
+            title = _title(m.group(3), m.group(4))
+            return (level, m.group(1).capitalize() + ' ' + m.group(2), title) if title is not None else None
     return None
 
 
@@ -64,7 +74,9 @@ def _next_title(lines, i):
     if j >= len(lines):
         return None
     s = plain(lines[j])
-    if (not s or len(s) > MAX_TITLE_LINE or s.endswith(('.', ';')) or ITEM_RE.match(s)
+    # Non è un titolo: frase («… si intende per:»), comma, riga di tabella o HTML, minuscola.
+    if (not s or len(s) > MAX_TITLE_LINE or s.endswith(('.', ';', ':', ',')) or ITEM_RE.match(s)
+            or s.startswith(('|', '-', '<', '>')) or s[0].islower()
             or _match(lines[j]) or MD_HEADING_RE.match(lines[j].strip())):
         return None
     return j, s

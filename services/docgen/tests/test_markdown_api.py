@@ -50,3 +50,44 @@ def test_pdf_senza_testo(tmp_path):
 def test_formato_e_dimensione():
     assert client.post('/markdown', files={'file': ('a.exe', b'x')}).status_code == 400
     assert client.post('/markdown', files={'file': ('a.rtf', b'x' * (20 * 1024 * 1024 + 1))}).status_code == 413
+
+
+def test_html_non_scarica_risorse_esterne():
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b'DATI-INTERNI-RISERVATI')
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        html = f'<p>a</p><iframe src="http://127.0.0.1:{srv.server_port}/x.html"></iframe><p>b</p>'.encode()
+        r = client.post('/markdown', files={'file': ('a.html', html)})
+    finally:
+        srv.shutdown()
+    assert r.status_code == 200, r.text
+    assert 'DATI-INTERNI' not in r.json()['markdown']
+
+
+def test_niente_html_grezzo():
+    html = b'<p>Testo</p><img src="http://evil/x.png" onerror="alert(1)"><table><tr><td colspan="2">A</td></tr></table>'
+    md = client.post('/markdown', files={'file': ('a.html', html)}).json()['markdown']
+    assert '<' not in md and 'onerror' not in md
+
+
+def test_titolo_del_docx_conservato(tmp_path):
+    import subprocess
+    src = tmp_path / 't.md'
+    src.write_text('---\ntitle: Regolamento incentivi\n---\n\nArt. 1 - Oggetto\n\nTesto.\n', encoding='utf-8')
+    out = tmp_path / 't.docx'
+    subprocess.run(['pandoc', str(src), '-o', str(out)], check=True)
+    md = client.post('/markdown', files={'file': ('t.docx', out.read_bytes())}).json()['markdown']
+    assert md.startswith('# Regolamento incentivi\n')

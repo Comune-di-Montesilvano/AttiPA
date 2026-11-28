@@ -146,7 +146,7 @@ Non ancora presenti (prossimi passi): Redis/BullMQ, regolamenti e norme con embe
   caricato mai nella riga di comando.
 - `POST /markdown` (multipart `file`: .docx .odt .html .htm .rtf .doc .pdf, max 20 MB) →
   `{markdown, warnings}`: import di regolamenti e documenti (ogni import diventa Markdown).
-  DOCX/ODT/HTML con pandoc (`--to gfm`), RTF/DOC prima in DOCX con LibreOffice, PDF con
+  DOCX/ODT/HTML con pandoc (`--sandbox`: un `<iframe src>` caricato verrebbe scaricato; `--to gfm-raw_html`: niente HTML grezzo; titolo Word dai metadati con `app/title.gfm`), RTF/DOC prima in DOCX con LibreOffice, PDF con
   pypdfium2 (non PyMuPDF: AGPL) + ricucitura righe e rimozione di testata/piè ripetuti.
   `app/markdown.py` fissa i titoli: `#` documento, `##` Parte/Libro/Titolo/Capo, `###` Sezione,
   `####` «Art. N[-bis]» (anche da paragrafi in grassetto). PDF senza testo → 422

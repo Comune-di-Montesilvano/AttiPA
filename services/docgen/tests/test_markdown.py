@@ -41,3 +41,33 @@ def test_escape_di_pandoc_su_commi_ed_elenchi():
     md, _ = normalize('Art. 2\n\n1\\. Il fondo è costituito da:\n\na\\) prima voce;')
     assert '#### Art. 2\n' in md
     assert '1. Il fondo è costituito da:' in md and 'a) prima voce;' in md
+
+
+def test_richiami_a_inizio_riga_non_titoli():
+    for riga in ('Art. 183, comma 3, del D.Lgs. 267/2000 prevede.',
+                 'art. 45 D.Lgs. 36/2023 dispone che.',
+                 'Art. 45 TUEL e successive modifiche'):
+        md, _ = normalize(riga)
+        assert '####' not in md, riga
+
+
+def test_titoli_ammessi():
+    md, _ = normalize('Art. 1 (Oggetto)\n\nArt. 2 - finalità\n\nArt. 3 Definizioni')
+    assert '#### Art. 1 – Oggetto' in md
+    assert '#### Art. 2 – finalità' in md
+    assert '#### Art. 3 – Definizioni' in md
+
+
+def test_numeri_romani_solo_maiuscoli():
+    md, _ = normalize('Capo di Gabinetto\n\nSezione di Pescara\n\nCapo II')
+    assert '## Capo DI' not in md and '### Sezione DI' not in md
+    assert '## Capo II' in md
+
+
+def test_riga_dopo_non_titolo_se_frase_o_tabella():
+    md, _ = normalize('Art. 4\n\nAi fini del presente regolamento si intende per:\n\na) RUP;')
+    assert '#### Art. 4\n' in md
+    md, _ = normalize('Art. 7\n\n| Fascia | % |\n|---|---|\n| A | 2 |')
+    assert '#### Art. 7\n' in md and '| Fascia | % |' in md
+    md, _ = normalize('Art. 8\n\nil fondo è unico')
+    assert '#### Art. 8\n' in md
