@@ -1,6 +1,6 @@
 name: Toolchain version check
-# pnpm (campo packageManager di package.json) e corepack (Dockerfile) sono fissati a mano e
-# Dependabot non li aggiorna: questo job apre una issue quando esce una versione piu' nuova,
+# pnpm (campo packageManager di package.json), corepack (Dockerfile di apps/) e pandoc
+# (Dockerfile di docgen) sono fissati a mano e Dependabot non li aggiorna: questo job apre una issue quando esce una versione piu' nuova,
 # dopo 7 giorni come il cooldown di Dependabot (una release compromessa e ritirata nel
 # frattempo non arriva mai a una PR). Stesso schema di trivy-version-check.yml.
 on:
@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tool: [pnpm, corepack]
+        tool: [pnpm, corepack, pandoc]
     steps:
       # Traffico in uscita registrato (audit, non bloccato): host contattati nel log del
       # post-step e nella pagina insights StepSecurity della run.
@@ -47,6 +47,9 @@ jobs:
           if [ "$TOOL" = pnpm ]; then
             pinned=$(jq -r '.packageManager // ""' package.json | sed -nE 's/^pnpm@([0-9]+\.[0-9]+\.[0-9]+)(\+.*)?$/\1/p')
             where='il campo `packageManager` di `package.json` (con l'"'"'hash: `pnpm@X.Y.Z+sha512.<hex>`, hex dell'"'"'integrity del registry npm)'
+          elif [ "$TOOL" = pandoc ]; then
+            pinned=$(grep -rhoE 'pandoc-[0-9]+(\.[0-9]+)+-1-amd64\.deb' services/docgen/Dockerfile* | sed -E 's/^pandoc-(.*)-1-amd64\.deb$/\1/' | sort -u)
+            where='URL `pandoc-X.Y-1-amd64.deb` e `--checksum=sha256:` di `ADD` in `services/docgen/Dockerfile` e `Dockerfile.dev` (sha256 = `digest` dell'"'"'asset nella release GitHub)'
           else
             pinned=$(grep -rhoE 'corepack-[0-9]+\.[0-9]+\.[0-9]+\.tgz' apps/*/Dockerfile* | sed -E 's/^corepack-(.*)\.tgz$/\1/' | sort -u)
             where='URL `corepack-X.Y.Z.tgz` e `--checksum=sha256:` di `ADD` nei Dockerfile di `apps/*/` (tutti uguali; sha256 del tarball dopo averne verificato l'"'"'integrity del registry)'
@@ -56,13 +59,22 @@ jobs:
             exit 1
           fi
 
-          meta=$(curl -fsSL --retry 3 "https://registry.npmjs.org/$TOOL")
-          latest=$(jq -r '."dist-tags".latest' <<<"$meta")
-          published=$(jq -r --arg v "$latest" '.time[$v]' <<<"$meta")
+          if [ "$TOOL" = pandoc ]; then
+            meta=$(gh api repos/jgm/pandoc/releases/latest)
+            latest=$(jq -r '.tag_name' <<<"$meta")
+            published=$(jq -r '.published_at' <<<"$meta")
+            same_major=$latest
+            changelog=https://github.com/jgm/pandoc/releases
+          else
+            meta=$(curl -fsSL --retry 3 "https://registry.npmjs.org/$TOOL")
+            latest=$(jq -r '."dist-tags".latest' <<<"$meta")
+            published=$(jq -r --arg v "$latest" '.time[$v]' <<<"$meta")
+            # Ultima della stessa major (solo versioni stabili): aggiornamento senza rotture,
+            # indicato nella issue accanto a quella piu' recente in assoluto.
+            same_major=$(jq -r --arg m "${pinned%%.*}." '.versions | keys[] | select(startswith($m)) | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' <<<"$meta" | sort -V | tail -1)
+            changelog="https://www.npmjs.com/package/$TOOL?activeTab=versions"
+          fi
           age_days=$(( ( $(date -u +%s) - $(date -u -d "$published" +%s) ) / 86400 ))
-          # Ultima della stessa major (solo versioni stabili): aggiornamento senza rotture,
-          # indicato nella issue accanto a quella piu' recente in assoluto.
-          same_major=$(jq -r --arg m "${pinned%%.*}." '.versions | keys[] | select(startswith($m)) | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' <<<"$meta" | sort -V | tail -1)
           echo "$TOOL fissato: $pinned, ultimo: $latest (pubblicato $published, $age_days giorni fa), ultimo ${pinned%%.*}.x: $same_major"
 
           [ "$latest" = "$pinned" ] && { echo "$TOOL aggiornato."; exit 0; }
@@ -80,7 +92,7 @@ jobs:
 
           Da aggiornare in $where.
 
-          Changelog: https://www.npmjs.com/package/$TOOL?activeTab=versions
+          Changelog: $changelog
 
           _Issue aperta da \`toolchain-version-check.yml\`._
           EOF

@@ -112,6 +112,19 @@ assert urllib.request.urlopen(req, timeout=120).read().startswith(b'%PDF')
 EOF
 ok "docgen: RTF → PDF"
 
+# RTF → DOCX (LibreOffice) → Markdown (pandoc): binario pandoc presente e titoli riconosciuti.
+$COMPOSE exec -T docgen python - <<'EOF' || fail "docgen /markdown"
+import json, urllib.request, uuid
+rtf = rb'{\rtf1\ansi\deff0 {\fonttbl {\f0 Liberation Serif;}} \f0 {\b Art. 1 - Oggetto}\par 1. Testo.\par}'
+b = uuid.uuid4().hex
+body = (f'--{b}\r\nContent-Disposition: form-data; name="file"; filename="reg.rtf"\r\n'
+        'Content-Type: application/rtf\r\n\r\n').encode() + rtf + f'\r\n--{b}--\r\n'.encode()
+req = urllib.request.Request('http://localhost:8000/markdown', data=body,
+                             headers={'Content-Type': f'multipart/form-data; boundary={b}'})
+assert '#### Art. 1 – Oggetto' in json.load(urllib.request.urlopen(req, timeout=120))['markdown']
+EOF
+ok "docgen: RTF → Markdown"
+
 for svc in postgres backend tinn-gateway docgen; do
   if $COMPOSE exec -T "$svc" sh -c 'touch /smoke' 2>/dev/null; then
     fail "filesystem di $svc scrivibile: read_only non applicato"

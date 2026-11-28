@@ -4,9 +4,13 @@ WORKDIR /svc
 # PKG_REFRESH (data del giorno, da release.yml) invalida una volta al giorno il layer
 # `apt-get upgrade`, altrimenti la cache registry congela le patch Debian.
 ARG PKG_REFRESH=none
+# pandoc (DOCX/ODT/HTML -> Markdown per POST /markdown): release ufficiale verificata con sha256.
+# toolchain-version-check.yml segnala le nuove versioni.
+ADD --checksum=sha256:dedb81f20345b76d7168ba551d90abceb707977fece789a79874094fe3833915 \
+    https://github.com/jgm/pandoc/releases/download/3.14/pandoc-3.14-1-amd64.deb /tmp/pandoc.deb
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation2 tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation2 tzdata /tmp/pandoc.deb \
+    && rm -rf /var/lib/apt/lists/* /tmp/pandoc.deb
 COPY services/docgen/requirements.txt .
 # Lock completo con hash (pip-compile); pip rimosso dopo l'install con le sue librerie vendored.
 RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt \
